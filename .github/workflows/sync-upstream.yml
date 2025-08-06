@@ -1,0 +1,52 @@
+name: Sync Upstream (DataDog/IDE-SHEPHERD-extension)
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch upstream
+        run: |
+          git remote add upstream https://github.com/DataDog/IDE-SHEPHERD-extension.git || true
+          git fetch upstream main
+
+      - name: Create PR or open conflict issue if upstream has new commits
+        run: |
+          BEHIND=$(git rev-list --count HEAD..upstream/main)
+          if [ "$BEHIND" -eq 0 ]; then
+            echo "Already up to date."
+            exit 0
+          fi
+          BRANCH="sync/upstream-$(date +%Y%m%d)"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          if git merge --no-edit upstream/main; then
+            git push origin "$BRANCH"
+            gh pr create \
+              --title "chore: sync upstream DataDog/IDE-SHEPHERD-extension" \
+              --body "Automated sync with \`DataDog/IDE-SHEPHERD-extension\` ($BEHIND new commits)." \
+              --base main \
+              --head "$BRANCH"
+          else
+            CONFLICTS=$(git diff --name-only --diff-filter=U)
+            git merge --abort
+            gh issue create \
+              --title "chore: upstream sync conflict ($(date +%Y-%m-%d))" \
+              --body "Upstream \`DataDog/IDE-SHEPHERD-extension\` has $BEHIND new commit(s), but automatic merge conflicted on:\n\`\`\`\n${CONFLICTS}\n\`\`\`"
+          fi
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

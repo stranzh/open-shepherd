@@ -1,0 +1,362 @@
+/**
+ * Datadog Telemetry Service - Orchestrates telemetry collection and submission
+ */
+
+import * as vscode from 'vscode';
+import { Logger } from '../../logger';
+import { DatadogTransport } from './datadog-transport';
+import { OCSFTracker } from './ocsf-tracker';
+import { CatchErrors } from '../../decorators';
+import {
+  isAgentRunning,
+  removeAgentLogging,
+  doesShepherdConfigExist,
+  readPortFromConfig,
+  restartAgent,
+  isShepherdConfigLoaded,
+  getCachedConfigPath,
+  setCachedConfigPath,
+} from './agent-config';
+
+/**
+ * Main Datadog Telemetry Service
+ * Orchestrates configuration, transport, and telemetry building
+ */
+export class DatadogTelemetryService {
+  private static _instance: DatadogTelemetryService;
+  private _context?: vscode.ExtensionContext;
+  private _transport: DatadogTransport;
+  private _ocsfTracker?: OCSFTracker;
+  private _agentMonitorTimer?: NodeJS.Timeout;
+  private _lastAgentStatus: boolean = false;
+  private _consecutiveAgentFailures: number = 0;
+  private _hasSeenAgentRunning: boolean = false;
+  private _hasLoggedStartupWait: boolean = false;
+  private static readonly AGENT_DOWN_THRESHOLD = 3; // require 3 consecutive failures (~90s) before disabling
+
+  private constructor() {
+    this._transport = new DatadogTransport();
+  }
+
+  static getInstance(): DatadogTelemetryService {
+    if (!DatadogTelemetryService._instance) {
+      DatadogTelemetryService._instance = new DatadogTelemetryService();
+    }
+    return DatadogTelemetryService._instance;
+  }
+
+  private static readonly CACHED_CONFIG_PATH_KEY = 'ide-shepherd.cachedAgentConfigPath';
+
+  @CatchErrors('DatadogTelemetryService')
+  async initialize(context: vscode.ExtensionContext): Promise<void> {
+    this._context = context;
+    const config = this._transport.getConfig();
+
+    // Restore the agent config dir path cached from the previous session so that
+    // removeAgentLogging() can still find the config file if the agent is down on startup.
+    const savedPath = context.globalState.get<string>(DatadogTelemetryService.CACHED_CONFIG_PATH_KEY);
+    if (savedPath) {
+      setCachedConfigPath(savedPath);
+      Logger.info(`DatadogTelemetryService: Restored cached agent config path: ${savedPath}`);
+    }
+
+    this._ocsfTracker = new OCSFTracker(context, this._transport);
+
+    // Stop any timer left over from a previous activation (guards against Cursor hot-reloads
+    // that call activate() again without calling deactivate() first).
+    if (this._agentMonitorTimer) {
+      clearInterval(this._agentMonitorTimer);
+      this._agentMonitorTimer = undefined;
+    }
+
+    this._lastAgentStatus = await isAgentRunning();
+    this._hasSeenAgentRunning = this._lastAgentStatus;
+    this.startAgentMonitoring();
+
+    // If telemetry is disabled but we have a saved config path from the previous session
+    // AND the config file still exists on disk, the IDE update most likely reset the
+    // VS Code global settings to their defaults. Silently restore the previous state.
+    // If the user or auto-disable actually removed the config, `savedPath` would have
+    // been cleared from globalState before shutdown, so this branch won't trigger.
+    //
+    // We distinguish a genuine settings reset from an intentional user disable by
+    // inspecting the raw VS Code config layer: if globalValue is undefined the setting
+    // was never explicitly written (i.e. it reverted to the package.json default), so
+    // restoration is safe. If the user explicitly wrote false, globalValue is false and
+    // we leave it alone.
+    const isEnabledInspect = vscode.workspace.getConfiguration('ide-shepherd.datadog').inspect<boolean>('isEnabled');
+    const settingsWereReset = isEnabledInspect?.globalValue === undefined;
+
+    if (!config.isEnabled && settingsWereReset && savedPath && this._lastAgentStatus) {
+      const configFileStillExists = await doesShepherdConfigExist();
+      if (configFileStillExists) {
+        await this.restoreAfterSettingsReset();
+      }
+    } else if (!config.isEnabled && this._lastAgentStatus) {
+      await this.checkForExistingConfig();
+    }
+
+    // Re-read config since restoreAfterSettingsReset() may have updated it.
+    const resolvedConfig = this._transport.getConfig();
+    if (resolvedConfig.isEnabled && resolvedConfig.agentPort) {
+      Logger.info(
+        `DatadogTelemetryService: Initialized with OCSF tracking - enabled on port ${resolvedConfig.agentPort}`,
+      );
+
+      // Flush any queued events from previous session
+      await this._ocsfTracker.flushQueuedEvents();
+    } else {
+      Logger.info('DatadogTelemetryService: Initialized (telemetry disabled, state tracking active)');
+    }
+  }
+
+  /**
+   * Silently re-enable telemetry when the IDE update has reset VS Code global settings to
+   * defaults. Called only when the cached config path is present in globalState (meaning the
+   * user never manually disabled telemetry) but `isEnabled` is `false` (the default).
+   */
+  private async restoreAfterSettingsReset(): Promise<void> {
+    try {
+      const port = await readPortFromConfig();
+      if (!port) {
+        Logger.warn(
+          'DatadogTelemetryService: Settings reset detected but could not read port — falling back to checkForExistingConfig',
+        );
+        await this.checkForExistingConfig();
+        return;
+      }
+
+      const vsConfig = vscode.workspace.getConfiguration('ide-shepherd.datadog');
+      await vsConfig.update('agentPort', port, vscode.ConfigurationTarget.Global);
+      await vsConfig.update('isEnabled', true, vscode.ConfigurationTarget.Global);
+
+      Logger.info(`DatadogTelemetryService: Restored telemetry after settings reset (port ${port})`);
+      vscode.commands.executeCommand('ide-shepherd.settings.refresh');
+    } catch (error) {
+      Logger.warn(
+        `DatadogTelemetryService: Failed to restore settings after reset — ${error instanceof Error ? error.message : error}`,
+      );
+      await this.checkForExistingConfig();
+    }
+  }
+
+  /**
+   * Check for existing IDE Shepherd configuration and prompt user to reuse it
+   */
+  private async checkForExistingConfig(): Promise<void> {
+    try {
+      const configExists = await doesShepherdConfigExist();
+
+      if (configExists) {
+        Logger.info('DatadogTelemetryService: Found existing IDE Shepherd configuration');
+
+        const existingPort = await readPortFromConfig();
+        const portInfo = existingPort ? ` on port ${existingPort}` : '';
+
+        const choice = await vscode.window.showInformationMessage(
+          `An existing IDE Shepherd configuration was detected${portInfo}. Would you like to reuse this configuration and enable telemetry?`,
+          'Yes, Enable Telemetry',
+          'No, Keep Disabled',
+          'Remove Config',
+        );
+
+        if (choice === 'Yes, Enable Telemetry') {
+          await this.enableExistingConfig(existingPort);
+        } else if (choice === 'Remove Config') {
+          await this.removeExistingConfig();
+        } else {
+          Logger.info('DatadogTelemetryService: User chose to keep telemetry disabled with existing config');
+        }
+      }
+    } catch (error) {
+      Logger.warn(
+        `DatadogTelemetryService: Error checking for existing config - ${error instanceof Error ? error.message : error}`,
+      );
+    }
+  }
+
+  /**
+   * Enable telemetry using existing configuration
+   */
+  private async enableExistingConfig(port: number | undefined): Promise<void> {
+    try {
+      if (!port) {
+        vscode.window.showWarningMessage(
+          'Could not read port from existing configuration. Please enable telemetry manually.',
+        );
+        return;
+      }
+
+      const vsConfig = vscode.workspace.getConfiguration('ide-shepherd.datadog');
+      await vsConfig.update('agentPort', port, vscode.ConfigurationTarget.Global);
+      await vsConfig.update('isEnabled', true, vscode.ConfigurationTarget.Global);
+
+      Logger.info(`DatadogTelemetryService: Enabled telemetry with existing config on port ${port}`);
+
+      const configLoaded = await isShepherdConfigLoaded();
+
+      if (configLoaded) {
+        vscode.window.showInformationMessage('✓ Telemetry enabled! Configuration is already active.');
+      } else {
+        const restartChoice = await vscode.window.showInformationMessage(
+          `Telemetry enabled! The agent needs to be restarted to load the configuration.`,
+          'Restart Now',
+          'Skip',
+        );
+
+        if (restartChoice === 'Restart Now') {
+          await vscode.window.withProgress(
+            {
+              location: vscode.ProgressLocation.Notification,
+              title: 'Restarting Datadog Agent...',
+              cancellable: false,
+            },
+            async () => {
+              await restartAgent();
+            },
+          );
+
+          vscode.window.showInformationMessage('✓ Datadog Agent restarted successfully! Telemetry is now active.');
+        } else {
+          vscode.window.showInformationMessage(
+            'Telemetry enabled. You need to restart the agent manually for it to work.',
+          );
+        }
+      }
+
+      // Persist the config path so it survives the next extension host restart
+      await this.persistCachedConfigPath();
+
+      // Flush any queued events
+      if (this._ocsfTracker) {
+        await this._ocsfTracker.flushQueuedEvents();
+      }
+
+      // Refresh the settings view
+      vscode.commands.executeCommand('ide-shepherd.settings.refresh');
+    } catch (error) {
+      Logger.error('DatadogTelemetryService: Failed to enable existing config', error as Error);
+      vscode.window.showErrorMessage(
+        `Failed to enable telemetry: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  /**
+   * Remove existing configuration file
+   */
+  private async removeExistingConfig(): Promise<void> {
+    try {
+      await removeAgentLogging();
+      Logger.info('DatadogTelemetryService: Removed existing configuration');
+      vscode.window.showInformationMessage('IDE Shepherd configuration removed from Datadog Agent.');
+
+      // Refresh the settings view
+      vscode.commands.executeCommand('ide-shepherd.settings.refresh');
+    } catch (error) {
+      Logger.error('DatadogTelemetryService: Failed to remove existing config', error as Error);
+      vscode.window.showErrorMessage(
+        `Failed to remove configuration: ${error instanceof Error ? error.message : 'Unknown error'}`,
+      );
+    }
+  }
+
+  /**
+   * Monitor agent status and auto-disable telemetry if agent goes down.
+   * Requires multiple consecutive failures before disabling to avoid false positives
+   * during transient events like IDE updates or restarts.
+   * Failures are only counted after the agent has been seen running at least once in
+   * this session — this prevents a slow-starting agent after an IDE restart from
+   * immediately triggering auto-disable.
+   */
+  private startAgentMonitoring(): void {
+    // Check agent status every 30 seconds
+    this._agentMonitorTimer = setInterval(async () => {
+      const config = this._transport.getConfig();
+      if (!config.isEnabled) {
+        this._consecutiveAgentFailures = 0;
+        return; // Telemetry already disabled
+      }
+
+      const agentRunning = await isAgentRunning();
+
+      if (agentRunning) {
+        this._hasSeenAgentRunning = true;
+        this._consecutiveAgentFailures = 0;
+      } else if (this._hasSeenAgentRunning) {
+        // Only count failures after the agent was confirmed running at least once.
+        // This avoids auto-disabling when the agent simply hasn't started yet
+        // (e.g. IDE restart applied an update while the system was also booting).
+        this._consecutiveAgentFailures++;
+        Logger.warn(
+          `DatadogTelemetryService: Agent unreachable (consecutive failures: ${this._consecutiveAgentFailures}/${DatadogTelemetryService.AGENT_DOWN_THRESHOLD})`,
+        );
+      } else if (!this._hasLoggedStartupWait) {
+        this._hasLoggedStartupWait = true;
+        Logger.debug('DatadogTelemetryService: Agent not yet running on startup, waiting...');
+      }
+
+      if (!agentRunning && this._consecutiveAgentFailures >= DatadogTelemetryService.AGENT_DOWN_THRESHOLD) {
+        this._consecutiveAgentFailures = 0;
+        Logger.warn('DatadogTelemetryService: Agent confirmed stopped, disabling telemetry');
+
+        // Try to remove config file (will use cached path since agent is down)
+        try {
+          await removeAgentLogging();
+          Logger.info('DatadogTelemetryService: Removed agent config file using cached path');
+        } catch (error) {
+          Logger.warn(
+            `DatadogTelemetryService: Could not remove agent config file - ${error instanceof Error ? error.message : error}`,
+          );
+        }
+
+        // Clear the persisted path — config file is gone, nothing to restore on next restart.
+        await this.persistCachedConfigPath();
+
+        // Inform user and disable telemetry
+        vscode.window
+          .showWarningMessage('Datadog Agent has stopped. Telemetry has been automatically disabled.', 'View Settings')
+          .then((selection) => {
+            if (selection === 'View Settings') {
+              vscode.commands.executeCommand('workbench.view.extension.ide-shepherd-explorer');
+            }
+          });
+
+        const vsConfig = vscode.workspace.getConfiguration('ide-shepherd.datadog');
+        await vsConfig.update('isEnabled', false, vscode.ConfigurationTarget.Global);
+
+        vscode.commands.executeCommand('ide-shepherd.settings.refresh');
+      }
+
+      this._lastAgentStatus = agentRunning;
+    }, 30000); // check every 30 seconds
+  }
+
+  /**
+   * Persist the current agent config directory path to globalState so it can be
+   * restored after an extension host restart (e.g. IDE update).
+   * Call this right after configureAgentLogging() succeeds.
+   */
+  async persistCachedConfigPath(): Promise<void> {
+    if (!this._context) {
+      return;
+    }
+    const path = getCachedConfigPath();
+    await this._context.globalState.update(DatadogTelemetryService.CACHED_CONFIG_PATH_KEY, path);
+    Logger.info(`DatadogTelemetryService: Persisted agent config path: ${path}`);
+  }
+
+  dispose(): void {
+    if (this._agentMonitorTimer) {
+      clearInterval(this._agentMonitorTimer);
+    }
+  }
+
+  getOCSFTracker(): OCSFTracker | undefined {
+    return this._ocsfTracker;
+  }
+
+  isEnabled(): boolean {
+    return this._transport.isEnabled();
+  }
+}

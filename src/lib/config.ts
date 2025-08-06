@@ -1,0 +1,39 @@
+/**
+ * Extension configuration constants; they can be linked to a UI and manually adjusted by the user
+ */
+
+export const CONFIG = {
+  EXTENSION: { ID: 'stranzh.open-shepherd', NAME: 'Open Shepherd', OUTPUT_CHANNEL_NAME: 'Open Shepherd' },
+  MODULES: {
+    HTTP_MODULES: ['http', 'https', 'node:http', 'node:https'],
+    NET_MODULES: ['net', 'node:net'],
+    TLS_MODULES: ['tls', 'node:tls'],
+    DNS_MODULES: ['dns', 'node:dns'],
+    CHILD_PROCESS_MODULES: ['child_process', 'node:child_process'],
+    FS_MODULES: ['fs', 'node:fs', 'fs/promises', 'node:fs/promises'],
+    WORKER_MODULES: ['worker_threads', 'node:worker_threads'],
+    VM_MODULES: ['vm', 'node:vm'],
+    VSCODE_MODULES: ['vscode'],
+  },
+  LOGGER: { MAX_TRUNCATE_LENGTH: 1000, LEVELS: { INFO: 'INFO', WARN: 'WARN', ERROR: 'ERROR', DEBUG: 'DEBUG' } },
+  NETWORK: {
+    MAX_CAPTURE_BYTES: 256 * 1024, // 256 kB
+  },
+  POLICY: { DEFAULT_MODE: 'balanced' as 'strict' | 'balanced' | 'audit-only', CORRELATION_WINDOW_MS: 60_000 },
+  UI: {
+    AUTO_REFRESH: {
+      ENABLED: true,
+      INTERVAL_MS: 10000, // Auto-refresh interval
+      MAX_RECENT_EVENTS: 10, // Maximum number of recent events to display
+    },
+  },
+  ALLOWLIST: {
+    DEFAULT_TRUSTED_PUBLISHERS: ['ms-vscode', 'ms-python', 'github', 'git', 'datadog', 'cursor', 'anysphere'],
+  },
+  DATADOG: {
+    SOURCE: 'ide-shepherd',
+    SERVICE: 'ide-shepherd-telemetry',
+    DEFAULT_AGENT_PORT: 10518,
+    OCSF: { SCHEMA_VERSION: '1.6.0', PRODUCT_NAME: 'IDE Shepherd', VENDOR_NAME: 'Datadog' },
+  },
+};

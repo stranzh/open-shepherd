@@ -1,0 +1,377 @@
+{
+  "name": "open-shepherd",
+  "displayName": "Open Shepherd",
+  "description": "Real-time runtime protection against malicious extensions and supply chain attacks",
+  "keywords": [
+    "security",
+    "protection",
+    "monitoring",
+    "supply chain",
+    "threat detection",
+    "malicious extensions",
+    "runtime protection",
+    "file system monitoring"
+  ],
+  "version": "1.0.0",
+  "publisher": "stranzh",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/stranzh/open-shepherd"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "icon": "resources/icons/icon.png",
+  "activationEvents": [
+    "*"
+  ],
+  "main": "./out/extension.js",
+  "bin": {
+    "open-shepherd": "./out/cli/index.js"
+  },
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "ide-shepherd-explorer",
+          "title": "IDE Shepherd",
+          "icon": "resources/icons/shepherd.png"
+        }
+      ]
+    },
+    "views": {
+      "ide-shepherd-explorer": [
+        {
+          "id": "ide-shepherd-status",
+          "name": "Security Status",
+          "when": "true",
+          "contextualTitle": "IDE Shepherd Security Status"
+        },
+        {
+          "id": "ide-shepherd-extensions",
+          "name": "Extensions Analysis",
+          "when": "true",
+          "contextualTitle": "Extension Security Analysis"
+        },
+        {
+          "id": "ide-shepherd-allowlist",
+          "name": "Allow Lists",
+          "when": "true",
+          "contextualTitle": "Extension Allow Lists"
+        },
+        {
+          "id": "ide-shepherd-events",
+          "name": "Security Events",
+          "when": "true",
+          "contextualTitle": "Recent Security Events"
+        },
+        {
+          "id": "ide-shepherd-task-timeline",
+          "name": "Task Timeline",
+          "when": "true",
+          "contextualTitle": "Suspicious Tasks Timeline"
+        },
+        {
+          "id": "ide-shepherd-settings",
+          "name": "Settings",
+          "when": "true",
+          "contextualTitle": "IDE Shepherd Settings"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "ide-shepherd.showStatus",
+        "title": "Show Security Status",
+        "category": "IDE Shepherd",
+        "icon": "$(info)"
+      },
+      {
+        "command": "ide-shepherd.scanExtensions",
+        "title": "Scan Extensions",
+        "category": "IDE Shepherd",
+        "icon": "$(search)"
+      },
+      {
+        "command": "ide-shepherd.showEvents",
+        "title": "Show Security Events",
+        "category": "IDE Shepherd",
+        "icon": "$(list-unordered)"
+      },
+      {
+        "command": "ide-shepherd.refreshStatus",
+        "title": "Refresh Status",
+        "category": "IDE Shepherd",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ide-shepherd.addToAllowList",
+        "title": "Add Extension to Allow List",
+        "category": "IDE Shepherd",
+        "icon": "$(add)"
+      },
+      {
+        "command": "ide-shepherd.removeFromAllowList",
+        "title": "Remove Extension from Allow List",
+        "category": "IDE Shepherd",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "ide-shepherd.clearAllowList",
+        "title": "Clear User Allow List",
+        "category": "IDE Shepherd",
+        "icon": "$(trash)"
+      },
+      {
+        "command": "ide-shepherd.addTrustedPublisher",
+        "title": "Add Trusted Publisher",
+        "category": "IDE Shepherd",
+        "icon": "$(briefcase)"
+      },
+      {
+        "command": "ide-shepherd.removeTrustedPublisher",
+        "title": "Remove Trusted Publisher",
+        "category": "IDE Shepherd",
+        "icon": "$(remove)"
+      },
+      {
+        "command": "ide-shepherd.settings.refresh",
+        "title": "Refresh Settings",
+        "category": "IDE Shepherd",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "ide-shepherd.settings.toggleDatadogTelemetry",
+        "title": "Toggle Datadog Telemetry",
+        "category": "IDE Shepherd",
+        "icon": "$(debug-disconnect)"
+      },
+      {
+        "command": "ide-shepherd.clearTaskTimeline",
+        "title": "Clear Task Timeline",
+        "category": "IDE Shepherd",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "ide-shepherd.scanWorkspace",
+        "title": "Scan Workspace & AI Configs",
+        "category": "IDE Shepherd",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "ide-shepherd.exportEvents",
+        "title": "Export Security Events (SIEM / SARIF)",
+        "category": "IDE Shepherd",
+        "icon": "$(export)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "ide-shepherd.refreshStatus",
+          "when": "view == ide-shepherd-status",
+          "group": "navigation"
+        },
+        {
+          "command": "ide-shepherd.scanExtensions",
+          "when": "view == ide-shepherd-extensions",
+          "group": "navigation"
+        },
+        {
+          "command": "ide-shepherd.exportEvents",
+          "when": "view == ide-shepherd-events",
+          "group": "navigation"
+        },
+        {
+          "command": "ide-shepherd.addToAllowList",
+          "when": "view == ide-shepherd-allowlist",
+          "group": "navigation"
+        },
+        {
+          "command": "ide-shepherd.addTrustedPublisher",
+          "when": "view == ide-shepherd-allowlist",
+          "group": "navigation"
+        },
+        {
+          "command": "ide-shepherd.settings.refresh",
+          "when": "view == ide-shepherd-settings",
+          "group": "navigation"
+        },
+        {
+          "command": "ide-shepherd.clearTaskTimeline",
+          "when": "view == ide-shepherd-task-timeline",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "ide-shepherd.showStatus",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.scanExtensions",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.scanWorkspace",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.exportEvents",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.showEvents",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.addToAllowList",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.clearAllowList",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.settings.refresh",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.settings.toggleDatadogTelemetry",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.clearTaskTimeline",
+          "when": "true"
+        }
+      ]
+    },
+    "configuration": {
+      "type": "object",
+      "title": "IDE Shepherd",
+      "properties": {
+        "ide-shepherd.isEnabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable IDE Shepherd security monitoring"
+        },
+        "ide-shepherd.policyMode": {
+          "type": "string",
+          "enum": [
+            "strict",
+            "balanced",
+            "audit-only"
+          ],
+          "default": "balanced",
+          "scope": "application",
+          "description": "Enforcement policy profile: strict blocks all threats and untrusted workers; balanced enforces standard blocking rules while permitting non-eval workers; audit-only logs without blocking"
+        },
+        "ide-shepherd.autoScan": {
+          "type": "boolean",
+          "default": true,
+          "description": "Automatically scan extensions on startup"
+        },
+        "ide-shepherd.notificationLevel": {
+          "type": "string",
+          "enum": [
+            "all",
+            "high",
+            "critical",
+            "none"
+          ],
+          "default": "high",
+          "description": "Minimum security level for notifications"
+        },
+        "ide-shepherd.maxEvents": {
+          "type": "number",
+          "default": 100,
+          "minimum": 10,
+          "maximum": 1000,
+          "description": "Maximum number of security events to keep"
+        },
+        "ide-shepherd.showStatusBar": {
+          "type": "boolean",
+          "default": true,
+          "description": "Show IDE Shepherd status in status bar"
+        },
+        "ide-shepherd.datadog.isEnabled": {
+          "type": "boolean",
+          "default": false,
+          "scope": "application",
+          "description": "Enable Datadog telemetry integration (requires Datadog Agent)"
+        },
+        "ide-shepherd.datadog.agentPort": {
+          "type": "number",
+          "minimum": 1024,
+          "maximum": 65535,
+          "scope": "application",
+          "description": "Local Datadog Agent port for TCP log forwarding"
+        }
+      }
+    },
+    "keybindings": [
+      {
+        "command": "ide-shepherd.showStatus",
+        "key": "ctrl+shift+s",
+        "mac": "cmd+shift+s",
+        "when": "true"
+      },
+      {
+        "command": "ide-shepherd.scanExtensions",
+        "key": "ctrl+shift+e",
+        "mac": "cmd+shift+e",
+        "when": "true"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "prepublishOnly": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src",
+    "lint:fix": "eslint src --fix",
+    "format": "prettier --write \"src/**/*.ts\" \"*.json\"",
+    "format:check": "prettier --check \"src/**/*.ts\" \"*.json\"",
+    "typecheck": "tsc --noEmit",
+    "test": "vscode-test",
+    "prepare": "husky"
+  },
+  "devDependencies": {
+    "@types/chai": "^4.3.20",
+    "@types/mocha": "^10.0.10",
+    "@types/node": "26.x",
+    "@types/sinon": "^22.0.2",
+    "@types/sinon-chai": "^4.0.0",
+    "@types/vscode": "^1.85.0",
+    "@typescript-eslint/eslint-plugin": "^8.46.2",
+    "@typescript-eslint/parser": "^8.31.1",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^3.1.0",
+    "chai": "^4.5.0",
+    "eslint": "^9.36.0",
+    "husky": "^9.1.7",
+    "lint-staged": "^17.6.0",
+    "prettier": "^3.4.2",
+    "sinon": "^21.0.0",
+    "sinon-chai": "^3.7.0",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "uuid": "^13.0.2"
+  },
+  "overrides": {
+    "@vscode/test-cli": {
+      "glob@^10.0.0": "^14.0.2",
+      "minimatch@^9.0.0": "^11.0.9"
+    },
+    "brace-expansion@^1.1.7": "^1.1.21",
+    "diff": "^8.0.4",
+    "serialize-javascript": "^7.1.3"
+  }
+}

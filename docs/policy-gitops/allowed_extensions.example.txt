@@ -1,0 +1,4 @@
+# Explicitly approved extensions (publisher.name, one per line)
+esbenp.prettier-vscode
+dbaeumer.vscode-eslint
+eamodio.gitlens

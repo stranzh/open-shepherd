@@ -1,0 +1,62 @@
+name: Supply Chain Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Ensure npm >= 11.10.0 (min-release-age support)
+        run: npm install -g npm@^11.10.0
+
+      - name: Deterministic install (scripts disabled)
+        run: npm ci --ignore-scripts
+
+      - name: npm audit (high/critical)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Verify package provenance signatures
+        run: npm audit signatures
+
+      - name: OSV-Scanner
+        run: |
+          OSV_VER="v2.7.1"
+          curl -sSfL "https://github.com/google/osv-scanner/releases/download/${OSV_VER}/osv-scanner_linux_amd64" -o /tmp/osv-scanner
+          curl -sSfL "https://github.com/google/osv-scanner/releases/download/${OSV_VER}/osv-scanner_SHA256SUMS" -o /tmp/osv-scanner_SHA256SUMS
+          (cd /tmp && grep "osv-scanner_linux_amd64" osv-scanner_SHA256SUMS | sed 's/osv-scanner_linux_amd64/osv-scanner/' | sha256sum -c -)
+          chmod +x /tmp/osv-scanner
+          /tmp/osv-scanner scan --lockfile=package-lock.json || true
+          /tmp/osv-scanner scan --lockfile=package-lock.json --format=json | node -e "const d=JSON.parse(require('fs').readFileSync(0,'utf8')); const prod=(d.results||[]).flatMap(r=>r.packages||[]).filter(p=>!(p.dependency_groups||[]).includes('dev')&&(p.vulnerabilities||[]).length>0); if(prod.length){console.error(prod);process.exit(1);}"
+
+      - name: Smoke test agent-hooks
+        run: |
+          TMP_LOG=$(mktemp)
+          echo '{"hook_event_name":"PreToolUse","tool_name":"Bash"}' | OPEN_SHEPHERD_LOG="$TMP_LOG" node agent-hooks/shepherd-hook.mjs
+          node -e "const fs=require('fs'); const e=JSON.parse(fs.readFileSync('$TMP_LOG','utf8').trim()); if(e.source!=='agent-hook'||e.event_type!=='PreToolUse') process.exit(1);"
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v5
+        with:
+          fail-on-severity: high
