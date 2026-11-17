@@ -28,15 +28,13 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Initialize Allow List Service
     const allowListService = AllowListService.getInstance();
-    allowListService.initialize(context).then(() => {
-      Logger.info('IDE Shepherd Extension: Allow List Service initialized');
-    });
+    await allowListService.initialize(context);
+    Logger.info('IDE Shepherd Extension: Allow List Service initialized');
 
     // Initialize Trusted Workspace Service
     const trustedWorkspaceService = TrustedWorkspaceService.getInstance();
-    trustedWorkspaceService.initialize(context).then(() => {
-      Logger.info('IDE Shepherd Extension: Trusted Workspace Service initialized');
-    });
+    await trustedWorkspaceService.initialize(context);
+    Logger.info('IDE Shepherd Extension: Trusted Workspace Service initialized');
 
     // Initialize Datadog Telemetry Service only when explicitly enabled
     const ddEnabled = vscode.workspace.getConfiguration('ide-shepherd.datadog').get<boolean>('isEnabled', false);

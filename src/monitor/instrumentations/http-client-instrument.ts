@@ -125,7 +125,7 @@ function createDynamicMock(realRequest: any): any {
 
       const val = CHAINABLE.has(String(prop))
         ? (..._args: any[]) => receiver
-        : typeof realRequest[prop] === 'function'
+        : realRequest != null && typeof realRequest[prop] === 'function'
           ? (..._args: any[]) => receiver
           : undefined;
 
@@ -184,11 +184,17 @@ function mkCollector(limit: number) {
 // We want a thorough coverage of http client since we're analyzing ALL traffic
 // credit: dd-trace-js
 function combineOptions(inputURL: any, inputOptions: any) {
-  return inputOptions && typeof inputOptions === 'object' ? Object.assign(inputURL || {}, inputOptions) : inputURL;
+  return inputOptions && typeof inputOptions === 'object'
+    ? Object.assign({}, inputURL || {}, inputOptions)
+    : inputURL && typeof inputURL === 'object'
+      ? { ...inputURL }
+      : {};
 }
 
 function normalizeHeaders(options: any) {
-  options.headers ??= {};
+  if (options && typeof options === 'object' && !Object.isFrozen(options)) {
+    options.headers ??= {};
+  }
 }
 
 function normalizeCallback(inputOptions: any, callback: any, inputURL: any) {

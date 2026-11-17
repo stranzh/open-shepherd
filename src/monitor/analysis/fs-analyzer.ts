@@ -1,3 +1,4 @@
+import * as path from 'path';
 import { SecurityEvent } from '../../lib/events/sec-events';
 import { Logger } from '../../lib/logger';
 import { IDEStatusService } from '../../lib/services/ide-status-service';
@@ -12,8 +13,14 @@ export class FsAnalyzer {
     try {
       let result = new AnalysisResult();
 
-      // Normalize path to forward slashes for cross-platform matching
-      const normalizedPath = ev.path.replace(/\\/g, '/');
+      // Canonicalize and normalize path to forward slashes for cross-platform matching
+      let decodedPath = ev.path;
+      try {
+        decodedPath = decodeURIComponent(ev.path);
+      } catch {
+        // ignore malformed URI sequences
+      }
+      const normalizedPath = path.resolve(decodedPath).replace(/\\/g, '/');
 
       for (const rule of FS_RULES) {
         const checkResult = this.checkRule(ev, normalizedPath, rule);

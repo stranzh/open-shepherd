@@ -54,9 +54,12 @@ export class NotificationService {
       }
     };
 
+    const esc = (s: string): string =>
+      s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+
     const title = `!!! Security Policy: ${getOperationTitle(type)} Blocked`;
 
-    let content = `A(n) <bold>${type}</bold> operation has been <bold>BLOCKED</bold> by IDE Shepherd's security policy.<br><br>`;
+    let content = `A(n) <bold>${esc(String(type))}</bold> operation has been <bold>BLOCKED</bold> by IDE Shepherd's security policy.<br><br>`;
 
     // callerExtension is set when the blocked operation originates from a known extension
     // acting on a workspace target (e.g. vscode.tasks.executeTask). It takes precedence
@@ -64,19 +67,19 @@ export class NotificationService {
     const resolvedExtension = securityEvent.callerExtension ?? securityEvent.extension;
 
     if (resolvedExtension) {
-      content += `<strong>EXTENSION:</strong> <bold>${resolvedExtension.id}</bold><br>`;
+      content += `<strong>EXTENSION:</strong> <bold>${esc(resolvedExtension.id)}</bold><br>`;
     } else if (securityEvent.workspace) {
-      content += `<strong>WORKSPACE:</strong> <bold>${securityEvent.workspace.name}</bold><br>`;
-      content += `<strong>PATH:</strong> ${securityEvent.workspace.path}<br>`;
+      content += `<strong>WORKSPACE:</strong> <bold>${esc(securityEvent.workspace.name)}</bold><br>`;
+      content += `<strong>PATH:</strong> ${esc(securityEvent.workspace.path)}<br>`;
     }
 
     if ([BlockedOperationType.REQUEST, BlockedOperationType.RESPONSE].includes(type)) {
-      content += `<strong>URL:</strong> ${target}<br><br>`;
+      content += `<strong>URL:</strong> ${esc(target)}<br><br>`;
     } else {
-      content += `<strong>COMMAND:</strong><br><code>${target}</code><br><br>`;
+      content += `<strong>COMMAND:</strong><br><code>${esc(target)}</code><br><br>`;
     }
 
-    content += `<strong>SUMMARY:</strong><br>${securityEvent.getSummary().replace(/\n/g, '<br>')}<br><br>`;
+    content += `<strong>SUMMARY:</strong><br>${esc(securityEvent.getSummary()).replace(/\n/g, '<br>')}<br><br>`;
     content += `<strong>ACTION:</strong> The ${getOperationTitle(type).toLowerCase()} was automatically blocked to protect your workspace.`;
 
     const identifier = resolvedExtension ? resolvedExtension.id : securityEvent.workspace?.path;
@@ -91,6 +94,12 @@ export class NotificationService {
     identifier?: string,
     isWorkspace: boolean = false,
   ): Promise<void> {
+    const escapedTitle = title
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
     return new Promise((resolve) => {
       const panel = vscode.window.createWebviewPanel('customModal', title, vscode.ViewColumn.Active, {
         enableScripts: true,
@@ -104,7 +113,8 @@ export class NotificationService {
                 <head>
                     <meta charset="UTF-8">
                     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                    <title>${title}</title>
+                    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline';">
+                    <title>${escapedTitle}</title>
                     <style>
                         body {
                             font-family: var(--vscode-font-family);

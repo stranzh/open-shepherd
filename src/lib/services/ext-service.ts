@@ -66,7 +66,14 @@ export class ExtensionServices {
   }
 
   static _shouldSkipStackLine(line: string) {
-    const skipPatterns = ['ide-shepherd', 'node:internal', 'Module._load', 'at Object.Module.', 'at Module.require'];
+    const skipPatterns = [
+      'ide-shepherd',
+      'open-shepherd',
+      'node:internal',
+      'Module._load',
+      'at Object.Module.',
+      'at Module.require',
+    ];
     return skipPatterns.some((pattern) => line.includes(pattern));
   }
 
@@ -89,15 +96,16 @@ export class ExtensionServices {
 
   private static getExtensionPatternsForPlatform(platform: PlatformType): RegExp[] {
     const isWindows = platform === PlatformType.WINDOWS;
+    const ideDirs = '\\.vscode(?:-insiders|-server|-oss)?|\\.cursor|\\.windsurf|\\.antigravity';
 
     if (isWindows) {
       return [
-        new RegExp(`(?:\\.vscode|\\.vscode-insiders)\\\\extensions\\\\([^\\\\]+)`),
+        new RegExp(`(?:${ideDirs})\\\\extensions\\\\([^\\\\]+)`),
         // built-in extensions in Windows can use either / or \, why ? cuz chaos >:3
-        new RegExp(`.*[/\\\\]app[/\\\\]extensions[/\\\\]([^/\\\\]+)`),
+        new RegExp(`[/\\\\]app[/\\\\]extensions[/\\\\]([^/\\\\]+)`),
       ];
     } else {
-      return [new RegExp(`(?:\\.vscode(?:-insiders)?)/extensions/([^/]+)`), new RegExp(`.*/app/extensions/([^/]+)`)];
+      return [new RegExp(`(?:${ideDirs})/extensions/([^/]+)`), new RegExp(`/app/extensions/([^/]+)`)];
     }
   }
 
