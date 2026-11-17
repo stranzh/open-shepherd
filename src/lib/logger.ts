@@ -5,6 +5,7 @@
 import * as vscode from 'vscode';
 import { CONFIG } from './config';
 import { IDEStatusService } from './services/ide-status-service';
+import { emitEvent } from './transport';
 
 const loggerLevels = CONFIG.LOGGER.LEVELS;
 
@@ -27,6 +28,8 @@ export class Logger {
     if (this.validateOutputChannel()) {
       IDEStatusService._outputChannel!.appendLine(`[${level}] ${message}`);
     }
+    const severity = level === loggerLevels.ERROR ? 'high' : level === loggerLevels.WARN ? 'warn' : 'info';
+    emitEvent({ source: 'vscode', event_type: 'log', severity, details: { level, message } });
   }
 
   static info(message: string) {
