@@ -1,0 +1,50 @@
+name: Supply Chain Security
+
+on:
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  security-events: write
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Ensure npm >= 11.10.0 (min-release-age support)
+        run: npm install -g npm@^11.10.0
+
+      - name: Deterministic install (scripts disabled)
+        run: npm ci --ignore-scripts
+
+      - name: npm audit (high/critical)
+        run: npm audit --audit-level=high
+
+      - name: Verify package provenance signatures
+        run: npm audit signatures
+
+      - name: OSV-Scanner
+        uses: google/osv-scanner-action/osv-scanner-action@v2
+        with:
+          scan-args: |-
+            --lockfile=package-lock.json
+
+  dependency-review:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

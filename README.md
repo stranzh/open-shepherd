@@ -1,5 +1,7 @@
 # Open-Shepherd
 
+[![Supply Chain Security](https://github.com/stranzh/open-shepherd/actions/workflows/supply-chain-security.yml/badge.svg)](https://github.com/stranzh/open-shepherd/actions/workflows/supply-chain-security.yml)
+
 Universal IDE & AI-agent security monitoring, adapted from [DataDog/IDE-SHEPHERD-extension](https://github.com/DataDog/IDE-SHEPHERD-extension) with **no Datadog lock-in**.
 
 - **VS Code family** (VS Code, Cursor, Windsurf, VSCodium, Antigravity, Trae): `src/`
