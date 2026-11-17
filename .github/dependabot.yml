@@ -6,6 +6,9 @@ updates:
       interval: 'daily'
     cooldown:
       default-days: 3
+    ignore:
+      - dependency-name: 'chai'
+        versions: ['>=5.0.0']
 
   - package-ecosystem: 'github-actions'
     directory: '/'

@@ -14,12 +14,9 @@ const DEFAULT_LOG_PATH = path.join(os.homedir(), '.open-shepherd', 'events.jsonl
 
 export function emitEvent(
   event: Omit<ShepherdEvent, 'timestamp'>,
-  options?: { logPath?: string; webhookUrl?: string }
+  options?: { logPath?: string; webhookUrl?: string },
 ): void {
-  const payload: ShepherdEvent = {
-    timestamp: new Date().toISOString(),
-    ...event,
-  };
+  const payload: ShepherdEvent = { timestamp: new Date().toISOString(), ...event };
 
   const logPath = options?.logPath || process.env.OPEN_SHEPHERD_LOG || DEFAULT_LOG_PATH;
   try {
