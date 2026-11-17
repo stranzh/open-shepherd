@@ -1,6 +1,35 @@
 # Open-Shepherd Wiki
 
-## 1. Architecture
+## 1. What It Can Do & What It Monitors
+
+### VS Code Family (VS Code, Cursor, Windsurf, VSCodium, Antigravity, Trae)
+
+- **Runtime API Monitoring** (`src/monitor/`): Hooks `http`/`https`, `child_process`, `fs`/`fs/promises`, and `vscode.tasks` inside the extension host.
+- **Threat Detection & Blocking** (`src/detection/`): Evaluates network requests, spawned processes, sensitive file reads/writes (e.g., `~/.ssh`, `~/.aws/credentials`, `/etc/passwd`), and workspace tasks against security rules, blocking policy violations.
+- **Extension Scanner** (`src/scanner/`): Inspects installed extension metadata and source code for suspicious patterns.
+- **Allowlists & Trusted Publishers**: Lets you allowlist specific extensions or publishers.
+- **Universal Event Output**: Emits structured `SecurityEvent`s to `~/.open-shepherd/events.jsonl` and optionally `OPEN_SHEPHERD_WEBHOOK`.
+
+### Neovim (`>= 0.9`)
+
+- **Terminal & Sensitive File Logging** (`neovim-plugin/`): Logs `TermOpen` and `BufWritePost` events for `.env`, `.ssh`, and `id_rsa` paths to `~/.open-shepherd/events.jsonl`.
+
+### AI CLI Agents (Claude Code, etc.)
+
+- **Tool-Use Audit Trail** (`agent-hooks/shepherd-hook.mjs`): Logs hook events (`PreToolUse`, `PostToolUse`, etc.) with truncated `tool_input` summaries (`command`, `file_path`, `url`, `path`, `pattern`) to `~/.open-shepherd/events.jsonl` and optional webhook.
+
+---
+
+## 2. What It Cannot Do & What It Is Not For
+
+- **Not an OS-level EDR / Antivirus**: In VS Code, hooks only cover Node.js APIs inside the extension host. Native binaries, external terminals, or processes outside the IDE are not monitored.
+- **Neovim & AI CLI hooks are audit-only**: They log events for visibility and forensics; they do **not** block commands or file writes.
+- **Not a Sandbox or Firewall**: It complements—but does not replace—OS user permissions, containers, or network firewalls.
+- **No Datadog Telemetry by Default**: Datadog Agent polling and OCSF submission are disabled unless `ide-shepherd.datadog.isEnabled` is explicitly set to `true`.
+
+---
+
+## 3. Architecture
 
 Open-Shepherd keeps the upstream VS Code extension layout at the repository root (`src/`) so updates from `DataDog/IDE-SHEPHERD-extension` merge cleanly via [`.github/workflows/sync-upstream.yml`](../.github/workflows/sync-upstream.yml).
 
