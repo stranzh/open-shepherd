@@ -95,7 +95,7 @@ export class ExtensionsRepository {
 
   getUserExtensions(): Extension[] {
     return Array.from(this._extensions.values()).filter(
-      (ext) => !ext.isBuiltIn && !ext.id.includes('ide-shepherd-extension'),
+      (ext) => !ext.isBuiltIn && !ext.id.includes('open-shepherd') && !ext.id.includes('ide-shepherd-extension'),
     );
   }
 

@@ -16,7 +16,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository }}
+    if: ${{ vars.PUBLISH_ENABLED == 'true' && github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_repository.full_name == github.repository }}
 
     steps:
       - name: Checkout repository
@@ -43,8 +43,8 @@ jobs:
         env:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
-          EXPECTED_VSIX="ide-shepherd-extension-${VERSION}.vsix"
-          ACTUAL_VSIX=$(ls ide-shepherd-extension-*.vsix 2>/dev/null | head -1)
+          EXPECTED_VSIX="open-shepherd-${VERSION}.vsix"
+          ACTUAL_VSIX=$(ls open-shepherd-*.vsix 2>/dev/null | head -1)
 
           if [ -z "$ACTUAL_VSIX" ]; then
             echo "Error: No VSIX artifact found"

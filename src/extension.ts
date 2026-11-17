@@ -38,19 +38,22 @@ export function activate(context: vscode.ExtensionContext) {
       Logger.info('IDE Shepherd Extension: Trusted Workspace Service initialized');
     });
 
-    // Initialize Datadog Telemetry Service
-    const datadogService = DatadogTelemetryService.getInstance();
-    datadogService.initialize(context).then(() => {
-      Logger.info('IDE Shepherd Extension: Datadog Telemetry Service initialized');
-      const extensionChangeService = ExtensionChangeService.getInstance();
-      const ocsfTracker = datadogService.getOCSFTracker();
+    // Initialize Datadog Telemetry Service only when explicitly enabled
+    const ddEnabled = vscode.workspace.getConfiguration('ide-shepherd.datadog').get<boolean>('isEnabled', false);
+    if (ddEnabled) {
+      const datadogService = DatadogTelemetryService.getInstance();
+      datadogService.initialize(context).then(() => {
+        Logger.info('IDE Shepherd Extension: Datadog Telemetry Service initialized');
+        const extensionChangeService = ExtensionChangeService.getInstance();
+        const ocsfTracker = datadogService.getOCSFTracker();
 
-      if (ocsfTracker) {
-        extensionChangeService.registerListener(ocsfTracker);
-      } else {
-        Logger.error('OCSF tracker is undefined! Cannot register.');
-      }
-    });
+        if (ocsfTracker) {
+          extensionChangeService.registerListener(ocsfTracker);
+        } else {
+          Logger.error('OCSF tracker is undefined! Cannot register.');
+        }
+      });
+    }
 
     const sidebarService = SidebarService.getInstance();
     sidebarService.initialize();

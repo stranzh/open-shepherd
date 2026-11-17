@@ -3,11 +3,14 @@
 
 local M = {}
 
-local default_log_path = vim.fn.expand("~/.open-shepherd/events.jsonl")
+local default_log_path = vim.env.OPEN_SHEPHERD_LOG or vim.fn.expand("~/.open-shepherd/events.jsonl")
 
 local function emit(event_type, severity, details)
   local log_path = M.config.log_path or default_log_path
-  vim.fn.mkdir(vim.fn.fnamemodify(log_path, ":h"), "p")
+  local ok = pcall(vim.fn.mkdir, vim.fn.fnamemodify(log_path, ":h"), "p")
+  if not ok then
+    return
+  end
 
   local payload = vim.json.encode({
     timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),

@@ -9,6 +9,19 @@ import path from 'path';
 const logPath = process.env.OPEN_SHEPHERD_LOG || path.join(os.homedir(), '.open-shepherd', 'events.jsonl');
 const webhookUrl = process.env.OPEN_SHEPHERD_WEBHOOK;
 
+function summarizeToolInput(toolInput) {
+  if (!toolInput || typeof toolInput !== 'object') {
+    return null;
+  }
+  const summary = {};
+  for (const key of ['command', 'file_path', 'path', 'url', 'pattern']) {
+    if (typeof toolInput[key] === 'string') {
+      summary[key] = toolInput[key].slice(0, 500);
+    }
+  }
+  return Object.keys(summary).length > 0 ? summary : null;
+}
+
 let raw = '';
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (chunk) => (raw += chunk));
@@ -17,7 +30,7 @@ process.stdin.on('end', () => {
   try {
     input = raw.trim() ? JSON.parse(raw) : {};
   } catch {
-    input = { raw };
+    input = { raw: raw.slice(0, 500) };
   }
 
   const event = {
@@ -27,6 +40,7 @@ process.stdin.on('end', () => {
     severity: 'info',
     details: {
       tool_name: input.tool_name || null,
+      tool_input: summarizeToolInput(input.tool_input),
       session_id: input.session_id || null,
       cwd: input.cwd || process.cwd(),
     },
@@ -44,6 +58,7 @@ process.stdin.on('end', () => {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(event),
+      signal: AbortSignal.timeout(2000),
     }).catch(() => {});
   }
 });

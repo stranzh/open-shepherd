@@ -10,6 +10,7 @@ import { IDEStatus, IDEStatusData, PlatformType } from '../ide-status';
 import { SidebarService } from './sidebar-service';
 import { CONFIG } from '../config';
 import { Logger } from '../logger';
+import { emitEvent } from '../transport';
 import { DatadogTelemetryService } from './datadog/datadog-service';
 
 const AUTO_REFRESH_CONFIG = CONFIG.UI.AUTO_REFRESH;
@@ -162,7 +163,23 @@ export class IDEStatusService {
       this.releaseLock();
     }
 
-    // Send OCSF Detection Finding to Datadog
+    // Emit structured security event to local JSONL & optional webhook
+    const sevMap: Record<string, 'info' | 'warn' | 'high'> = { low: 'info', medium: 'warn', high: 'high' };
+    emitEvent({
+      source: 'vscode',
+      event_type: String(event.securityEventType),
+      severity: sevMap[event.severity] || 'warn',
+      details: {
+        secEventId: event.secEventId,
+        target: event.originalEvent.eventType,
+        extensionId: event.extension?.id,
+        callerExtensionId: event.callerExtension?.id,
+        workspace: event.workspace?.name,
+        iocs: event.iocs,
+      },
+    });
+
+    // Send OCSF Detection Finding to Datadog (only active when initialized)
     this.sendSecurityEventToDatadog(event).catch((error) => {
       Logger.error(`Failed to send security event to Datadog: ${error}`);
     });

@@ -2,6 +2,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
+// Capture unpatched fs functions at load time so emitEvent never re-enters fs-instrument hooks.
+const rawMkdirSync = fs.mkdirSync.bind(fs);
+const rawAppendFileSync = fs.appendFileSync.bind(fs);
+
 export interface ShepherdEvent {
   timestamp: string;
   source: 'vscode' | 'neovim' | 'agent-hook';
@@ -20,8 +24,8 @@ export function emitEvent(
 
   const logPath = options?.logPath || process.env.OPEN_SHEPHERD_LOG || DEFAULT_LOG_PATH;
   try {
-    fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    fs.appendFileSync(logPath, JSON.stringify(payload) + '\n', 'utf8');
+    rawMkdirSync(path.dirname(logPath), { recursive: true });
+    rawAppendFileSync(logPath, JSON.stringify(payload) + '\n', 'utf8');
   } catch {
     // Best-effort local logging; never crash the IDE host.
   }
@@ -32,6 +36,7 @@ export function emitEvent(
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(2000),
     }).catch(() => {});
   }
 }

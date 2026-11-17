@@ -1,6 +1,6 @@
 {
-  "name": "ide-shepherd-extension",
-  "displayName": "IDE Shepherd",
+  "name": "open-shepherd",
+  "displayName": "Open Shepherd",
   "description": "Real-time runtime protection against malicious extensions and supply chain attacks",
   "keywords": [
     "security",
@@ -13,11 +13,11 @@
     "file system monitoring"
   ],
   "version": "3.1.2",
-  "publisher": "datadog",
+  "publisher": "stranzh",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/DataDog/IDE-Shepherd-extension"
+    "url": "https://github.com/stranzh/open-shepherd"
   },
   "engines": {
     "vscode": "^1.99.3"

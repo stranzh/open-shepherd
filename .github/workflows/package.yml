@@ -37,7 +37,7 @@ jobs:
         id: package
         run: |
           VERSION=$(jq -r '.version' package.json)
-          VSIX="ide-shepherd-extension-${VERSION}.vsix"
+          VSIX="open-shepherd-${VERSION}.vsix"
           vsce package --no-dependencies --out "$VSIX"
           echo "vsix_name=$VSIX" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -55,7 +55,7 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: vsix
-          path: ide-shepherd-extension-*.vsix
+          path: open-shepherd-*.vsix
           retention-days: 7
 
       - name: Create GitHub Release

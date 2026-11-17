@@ -3,11 +3,7 @@
  */
 
 export const CONFIG = {
-  EXTENSION: {
-    ID: 'datadog.ide-shepherd-extension',
-    NAME: 'IDE Shepherd',
-    OUTPUT_CHANNEL_NAME: 'IDE Shepherd Extension',
-  },
+  EXTENSION: { ID: 'stranzh.open-shepherd', NAME: 'Open Shepherd', OUTPUT_CHANNEL_NAME: 'Open Shepherd' },
   MODULES: {
     HTTP_MODULES: ['http', 'https', 'node:http', 'node:https'],
     CHILD_PROCESS_MODULES: ['child_process', 'node:child_process'],
