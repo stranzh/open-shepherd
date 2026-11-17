@@ -136,8 +136,7 @@ export class TaskScanner {
 
         SidebarService.getInstance().updateTaskEvent(taskId, { isSuspicious: true, suspiciousPattern: rule.name });
 
-        const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-        const workspacePath = workspaceFolder?.uri.fsPath || '';
+        const workspacePath = info.workspacePath || vscode.workspace.workspaceFolders?.[0]?.uri.fsPath || '';
         const trustedWorkspaceService = TrustedWorkspaceService.getInstance();
 
         if (trustedWorkspaceService.isTrusted(workspacePath)) {
@@ -201,6 +200,16 @@ export class TaskScanner {
     return info.command;
   }
 
+  private unwrapShellArg(val: unknown): string {
+    if (typeof val === 'string') {
+      return val;
+    }
+    if (val && typeof val === 'object' && 'value' in val && typeof (val as any).value === 'string') {
+      return (val as any).value;
+    }
+    return String(val ?? '');
+  }
+
   private extractTaskInfo(task: vscode.Task, event: vscode.TaskStartEvent): TaskExecutionInfo {
     const info: TaskExecutionInfo = {
       taskName: task.name,
@@ -212,8 +221,11 @@ export class TaskScanner {
 
     // Get working directory from task scope if available
     let workingDir: string | undefined;
-    if (task.scope && typeof task.scope === 'object') {
-      workingDir = (task.scope as vscode.WorkspaceFolder).uri.fsPath;
+    if (task.scope && typeof task.scope === 'object' && 'uri' in task.scope) {
+      const folder = task.scope as vscode.WorkspaceFolder;
+      workingDir = folder.uri.fsPath;
+      info.workspacePath = folder.uri.fsPath;
+      info.workspaceName = folder.name;
     }
 
     // extract command details if available
@@ -223,9 +235,9 @@ export class TaskScanner {
         if (typeof shellExec.commandLine === 'string') {
           info.command = shellExec.commandLine;
         } else {
-          info.command = shellExec.command as string;
+          info.command = this.unwrapShellArg(shellExec.command);
           if (shellExec.args) {
-            info.args = shellExec.args.map((arg) => (typeof arg === 'string' ? arg : String(arg)));
+            info.args = shellExec.args.map((arg) => this.unwrapShellArg(arg));
           }
         }
         // Use explicit cwd from options, or fall back to workspace folder
@@ -233,7 +245,7 @@ export class TaskScanner {
       } else if (task.execution instanceof vscode.ProcessExecution) {
         const procExec = task.execution as vscode.ProcessExecution;
         info.command = procExec.process;
-        info.args = procExec.args.map((arg) => (typeof arg === 'string' ? arg : String(arg)));
+        info.args = procExec.args.map((arg) => this.unwrapShellArg(arg));
         info.cwd = procExec.options?.cwd || workingDir;
       }
     }
@@ -261,9 +273,9 @@ export class TaskScanner {
     command: string,
   ): Promise<SecurityEvent | null> {
     try {
-      const workspaceName = vscode.workspace.name || 'Unknown Workspace';
+      const workspaceName = info.workspaceName || vscode.workspace.name || 'Unknown Workspace';
       const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-      const workspacePath = workspaceFolder?.uri.fsPath || '';
+      const workspacePath = info.workspacePath || workspaceFolder?.uri.fsPath || '';
 
       // Check if workspace is trusted
       const trustedWorkspaceService = TrustedWorkspaceService.getInstance();
@@ -386,6 +398,8 @@ interface TaskExecutionInfo {
   command?: string;
   args?: string[];
   cwd?: string;
+  workspacePath?: string;
+  workspaceName?: string;
   processId?: number;
   startTime: Date;
   endTime?: Date;

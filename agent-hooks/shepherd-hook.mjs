@@ -22,13 +22,26 @@ function summarizeToolInput(toolInput) {
   return Object.keys(summary).length > 0 ? summary : null;
 }
 
+const MAX_STDIN_BYTES = 256 * 1024;
 let raw = '';
+let truncated = false;
 process.stdin.setEncoding('utf8');
-process.stdin.on('data', (chunk) => (raw += chunk));
+process.stdin.on('error', () => process.exit(0));
+process.stdin.on('data', (chunk) => {
+  if (truncated) return;
+  if (raw.length + chunk.length > MAX_STDIN_BYTES) {
+    raw += chunk.slice(0, MAX_STDIN_BYTES - raw.length);
+    truncated = true;
+    process.stdin.destroy();
+  } else {
+    raw += chunk;
+  }
+});
 process.stdin.on('end', () => {
   let input = {};
   try {
-    input = raw.trim() ? JSON.parse(raw) : {};
+    const parsed = raw.trim() ? JSON.parse(raw) : {};
+    input = parsed && typeof parsed === 'object' ? parsed : {};
   } catch {
     input = { raw: raw.slice(0, 500) };
   }
@@ -47,18 +60,27 @@ process.stdin.on('end', () => {
   };
 
   try {
-    fs.mkdirSync(path.dirname(logPath), { recursive: true });
-    fs.appendFileSync(logPath, JSON.stringify(event) + '\n', 'utf8');
+    fs.mkdirSync(path.dirname(logPath), { recursive: true, mode: 0o700 });
+    fs.appendFileSync(logPath, JSON.stringify(event) + '\n', { encoding: 'utf8', mode: 0o600 });
   } catch {
     // Never block the agent on logging failure.
   }
 
   if (webhookUrl) {
-    fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(event),
-      signal: AbortSignal.timeout(2000),
-    }).catch(() => {});
+    try {
+      const parsedUrl = new URL(webhookUrl);
+      const isLoopback = ['localhost', '127.0.0.1', '::1', '[::1]'].includes(parsedUrl.hostname);
+      if (parsedUrl.protocol === 'https:' || (parsedUrl.protocol === 'http:' && isLoopback)) {
+        fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(event),
+          redirect: 'error',
+          signal: AbortSignal.timeout(2000),
+        }).catch(() => {});
+      }
+    } catch {
+      // Ignore invalid webhook URL
+    }
   }
 });

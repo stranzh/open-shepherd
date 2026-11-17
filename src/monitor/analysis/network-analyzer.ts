@@ -89,10 +89,17 @@ export class NetworkAnalyzer {
   }
 
   private checkExternalIp(url: string, ev: NetworkEvent, rule: (typeof NETWORK_RULES)[0]): AnalysisResult | null {
-    const ipMatch = url.match(rule.pattern);
-    const localMatch = url.match(EXCLUDED_IP_PATTERN);
-    const wildMatch = url.match(WILDCARD_IP_PATTERN);
-    const localhostMatch = url.match(LOCALHOST_PATTERN);
+    let hostname = url;
+    try {
+      hostname = new URL(url).hostname;
+    } catch {
+      // fall back to raw url if unparseable
+    }
+
+    const ipMatch = hostname.match(rule.pattern);
+    const localMatch = hostname.match(EXCLUDED_IP_PATTERN);
+    const wildMatch = hostname.match(WILDCARD_IP_PATTERN);
+    const localhostMatch = hostname.match(LOCALHOST_PATTERN);
 
     if (ipMatch && !localMatch && !wildMatch && !localhostMatch && ev.extension) {
       const matchedIp = ipMatch[0];

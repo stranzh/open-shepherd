@@ -16,14 +16,24 @@ const WORKSPACE_TASK_SOURCES = new Set(['Workspace', 'User', '']);
 // task.source is the task-provider type string (e.g. 'nx'), not the extension ID.
 // Resolve it to the real extension ID by finding which installed extension contributes
 // a taskDefinition with that type. Falls back to the raw source string if no match.
-export function resolveExtensionIdFromTaskSource(taskSource: string, vscodeMod: typeof vscode): string {
+export function resolveExtensionIdFromTaskSource(taskSource: string, vscodeMod: typeof vscode): string | null {
   for (const ext of vscodeMod.extensions.all) {
     const taskDefs = ext.packageJSON?.contributes?.taskDefinitions;
     if (Array.isArray(taskDefs) && taskDefs.some((def: any) => def.type === taskSource)) {
       return ext.id;
     }
   }
-  return taskSource;
+  return null;
+}
+
+function unwrapShellArg(val: unknown): string {
+  if (typeof val === 'string') {
+    return val;
+  }
+  if (val && typeof val === 'object' && 'value' in val && typeof (val as any).value === 'string') {
+    return (val as any).value;
+  }
+  return String(val ?? '');
 }
 
 function extractCommand(task: vscode.Task): string {
@@ -35,12 +45,12 @@ function extractCommand(task: vscode.Task): string {
     if (typeof ex.commandLine === 'string' && ex.commandLine) {
       return ex.commandLine;
     }
-    const cmd = typeof ex.command === 'string' ? ex.command : '';
-    const args = (ex.args ?? []).map((a) => (typeof a === 'string' ? a : String(a)));
+    const cmd = unwrapShellArg(ex.command);
+    const args = (ex.args ?? []).map(unwrapShellArg);
     return args.length ? `${cmd} ${args.join(' ')}` : cmd;
   }
   if (ex instanceof vscode.ProcessExecution) {
-    const args = ex.args.map((a) => (typeof a === 'string' ? a : String(a)));
+    const args = ex.args.map(unwrapShellArg);
     return args.length ? `${ex.process} ${args.join(' ')}` : ex.process;
   }
   return '';
@@ -67,7 +77,10 @@ export function patchVscodeTasks(vscodeMod: typeof vscode): void {
 
     if (raw) {
       const normalized = normalizeCommand(raw);
-      const workspacePath = vscodeMod.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '';
+      const workspacePath =
+        task.scope && typeof task.scope === 'object' && 'uri' in task.scope
+          ? task.scope.uri.fsPath
+          : (vscodeMod.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '');
 
       // task.source is set at Task construction time by whoever owns the task —
       // reliable across sync and async dispatch, unlike stack trace inspection.

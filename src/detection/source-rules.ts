@@ -101,7 +101,7 @@ export const SOURCE_RULES: SourceRule[] = [
     detect: (content) => {
       return (
         /eval\s*\(\s*(?:atob|Buffer\.from|decodeURIComponent|unescape)\s*\(/.test(content) ||
-        /new\s+Function\s*\([^)]*(?:atob|Buffer\.from|decodeURIComponent)\s*\(/.test(content)
+        /new\s+Function\s*\([^)\n]{0,256}(?:atob|Buffer\.from|decodeURIComponent)\s*\(/.test(content)
       );
     },
   },
@@ -128,7 +128,7 @@ export const SOURCE_RULES: SourceRule[] = [
       if (!hasHiddenTask) {
         return false;
       }
-      const hasNpxGithub = /\bnpx\b[^\n]*\bgithub:/i.test(content);
+      const hasNpxGithub = content.split(/\r?\n/).some((line) => /\bnpx\b/i.test(line) && /\bgithub:/i.test(line));
       if (!hasNpxGithub) {
         return false;
       }

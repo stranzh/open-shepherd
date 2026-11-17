@@ -262,12 +262,14 @@
         "ide-shepherd.datadog.isEnabled": {
           "type": "boolean",
           "default": false,
+          "scope": "application",
           "description": "Enable Datadog telemetry integration (requires Datadog Agent)"
         },
         "ide-shepherd.datadog.agentPort": {
           "type": "number",
           "minimum": 1024,
           "maximum": 65535,
+          "scope": "application",
           "description": "Local Datadog Agent port for TCP log forwarding"
         }
       }

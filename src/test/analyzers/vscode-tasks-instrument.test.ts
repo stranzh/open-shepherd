@@ -74,14 +74,14 @@ suite('vscode-tasks-instrument', () => {
       expect(result).to.equal('nrwl.angular-console');
     });
 
-    test('falls back to raw source string when no extension matches', () => {
+    test('returns null when no extension matches', () => {
       const mockVsCode = createMockVsCode([
         { id: 'some.other-extension', packageJSON: { contributes: { taskDefinitions: [{ type: 'gulp' }] } } },
       ]);
 
       const result = resolveExtensionIdFromTaskSource('nx', mockVsCode as any);
 
-      expect(result).to.equal('nx');
+      expect(result).to.equal(null);
     });
 
     test('handles extensions with no contributes field without throwing', () => {

@@ -89,14 +89,32 @@ export class AllowListService {
   }
 
   isAllowed(extensionId: string): boolean {
-    return (
+    if (
       this._builtInAllowList.has(extensionId) ||
       this._trustedPublisherAllowList.has(extensionId) ||
       this._userAllowList.has(extensionId)
-    );
+    ) {
+      return true;
+    }
+
+    const prefix = `${extensionId}-`;
+    for (const list of [this._builtInAllowList, this._trustedPublisherAllowList, this._userAllowList]) {
+      for (const entry of list) {
+        if (entry.startsWith(prefix)) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 
   async addToUserAllowList(extensionId: string): Promise<void> {
+    if (!extensionId || extensionId === 'caller:unknown' || extensionId === 'unknown-stack' || extensionId === 'stack-error') {
+      Logger.warn(`AllowListService: Refusing to allowlist unattributed extension ID: ${extensionId}`);
+      return;
+    }
+
     if (this.isAllowed(extensionId)) {
       Logger.debug(`AllowListService: Extension ${extensionId} is already allowed`);
       return;

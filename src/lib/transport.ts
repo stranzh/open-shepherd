@@ -5,6 +5,7 @@ import * as path from 'path';
 // Capture unpatched fs functions at load time so emitEvent never re-enters fs-instrument hooks.
 const rawMkdirSync = fs.mkdirSync.bind(fs);
 const rawAppendFileSync = fs.appendFileSync.bind(fs);
+const rawLstatSync = fs.lstatSync.bind(fs);
 
 export interface ShepherdEvent {
   timestamp: string;
@@ -24,8 +25,15 @@ export function emitEvent(
 
   const logPath = options?.logPath || process.env.OPEN_SHEPHERD_LOG || DEFAULT_LOG_PATH;
   try {
-    rawMkdirSync(path.dirname(logPath), { recursive: true });
-    rawAppendFileSync(logPath, JSON.stringify(payload) + '\n', 'utf8');
+    rawMkdirSync(path.dirname(logPath), { recursive: true, mode: 0o700 });
+    try {
+      if (rawLstatSync(logPath).isSymbolicLink()) {
+        return;
+      }
+    } catch {
+      // File does not exist yet; safe to create.
+    }
+    rawAppendFileSync(logPath, JSON.stringify(payload) + '\n', { encoding: 'utf8', mode: 0o600 });
   } catch {
     // Best-effort local logging; never crash the IDE host.
   }

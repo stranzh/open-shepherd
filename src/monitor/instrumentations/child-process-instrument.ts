@@ -31,7 +31,11 @@ function createBlockedProcess(): ChildProcess {
   };
 
   // let the caller’s error handler run *after* they attach it
-  process.nextTick(() => proc.emit('error', new Error('Execution blocked by security policy')));
+  process.nextTick(() => {
+    if (proc.listenerCount('error') > 0) {
+      proc.emit('error', new Error('Execution blocked by security policy'));
+    }
+  });
 
   return proc;
 }
@@ -77,12 +81,20 @@ export function patchChildProcess(
 
       NotificationService.showSecurityBlockingInfo(command, analysis.securityEvent, BlockedOperationType.EXEC);
 
+      if (callback) {
+        process.nextTick(() => callback(new Error('Execution blocked by security policy'), '', ''));
+      }
+
       return createBlockedProcess();
     }
 
     const wrappedCallback = callback
       ? (error: ExecException | null, stdout: string | Buffer, stderr: string | Buffer) => {
-          callback(error, String(stdout), String(stderr));
+          (callback as (error: ExecException | null, stdout: string | Buffer, stderr: string | Buffer) => void)(
+            error,
+            stdout,
+            stderr,
+          );
         }
       : undefined;
 

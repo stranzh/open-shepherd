@@ -57,6 +57,9 @@ export class ExtensionsRepository {
       this._extensions.clear();
 
       for (const ext of vsCodeExtensions) {
+        if (typeof ext.extensionPath !== 'string') {
+          continue;
+        }
         const version = ext.packageJSON?.version || '0.0.0';
         const versionedId = `${ext.id}-${version}`;
 
@@ -95,13 +98,13 @@ export class ExtensionsRepository {
 
   getUserExtensions(): Extension[] {
     return Array.from(this._extensions.values()).filter(
-      (ext) => !ext.isBuiltIn && !ext.id.includes('open-shepherd') && !ext.id.includes('ide-shepherd-extension'),
+      (ext) => !ext.isBuiltIn && ext.displayName !== 'stranzh.open-shepherd' && !ext.id.includes('ide-shepherd-extension'),
     );
   }
 
   getExtensionsByPublisher(publisher: string): Extension[] {
     return Array.from(this._extensions.values()).filter(
-      (ext) => ext.packageJSON?.publisher?.toLowerCase() === publisher.toLowerCase(),
+      (ext) => typeof ext.packageJSON?.publisher === 'string' && ext.packageJSON.publisher.toLowerCase() === publisher.toLowerCase(),
     );
   }
 
@@ -121,6 +124,14 @@ export class ExtensionsRepository {
    */
   private isBuiltInExtension(extension: vscode.Extension<any>): boolean {
     const path = extension.extensionPath.toLowerCase();
+    const appRoot = vscode.env?.appRoot;
+    if (typeof appRoot === 'string' && appRoot.length > 0) {
+      const sep = appRoot.includes('\\') ? '\\' : '/';
+      const builtInRoot = `${appRoot.toLowerCase()}${sep}extensions${sep}`;
+      if (path.startsWith(builtInRoot)) {
+        return true;
+      }
+    }
 
     // These patterns match both VS Code and Cursor native extensions:
     // VS Code: /Applications/Visual Studio Code.app/Contents/Resources/app/extensions/
