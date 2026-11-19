@@ -100,9 +100,3 @@ Add to `~/.claude/settings.json`:
 | ----------------------- | ------------------------------- | ------------------------------------------------ |
 | `OPEN_SHEPHERD_LOG`     | `~/.open-shepherd/events.jsonl` | Path to local JSONL event log                    |
 | `OPEN_SHEPHERD_WEBHOOK` | _(unset)_                       | Optional HTTP(S) endpoint for `POST` JSON events |
-
----
-
-## 4. Upstream Sync
-
-[`.github/workflows/sync-upstream.yml`](../.github/workflows/sync-upstream.yml) runs weekly (Mondays 06:00 UTC) or manually via `workflow_dispatch` to open a PR when `DataDog/IDE-SHEPHERD-extension` has new commits.
