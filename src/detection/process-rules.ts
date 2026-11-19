@@ -80,6 +80,45 @@ export const PROCESS_RULES: ProcessRule[] = [
     optionsMatcher: (opts) => opts['detached'] === true && opts['stdio'] === 'ignore',
     confidence: 0.9,
   },
+
+  // Destructive filesystem, disk, and infrastructure commands
+  {
+    id: 'destructive_fs_or_disk_command',
+    name: 'Destructive Filesystem or Disk Command',
+    description: 'Detected destructive filesystem, disk partitioning, or infrastructure destroy command',
+    type: ProcessRuleType.COMMAND,
+    target: Target.PROCESS,
+    severity: SeverityLevel.HIGH,
+    commandPattern:
+      /(?:\brm\s+-[a-z]*r[a-z]*f|\b(?:diskpart|bcdedit)(?:\.exe)?\b|\bterraform\s+destroy\b|\b(?:Format-Volume|Clear-Disk|Initialize-Disk|Remove-Partition)\b)/i,
+    confidence: 0.95,
+  },
+
+  // Network transfer, scanning, and remote access tools
+  {
+    id: 'network_transfer_or_scan_command',
+    name: 'Network Transfer or Scanning Command',
+    description: 'Detected network transfer, tunneling, remote shell, or port scanning command',
+    type: ProcessRuleType.COMMAND,
+    target: Target.PROCESS,
+    severity: SeverityLevel.HIGH,
+    commandPattern:
+      /\b(?:nc|ncat|netcat|nmap|socat|ssh|scp|sftp|rsync)(?:\.exe)?\b|\b(?:Invoke-WebRequest|iwr|Start-BitsTransfer|Invoke-Expression)\b/i,
+    confidence: 0.9,
+  },
+
+  // Windows system administration, firewall, Defender, and persistence commands
+  {
+    id: 'windows_admin_or_persistence_command',
+    name: 'Windows Admin or Persistence Command',
+    description: 'Detected Windows registry, service, scheduled task, firewall, or Defender modification command',
+    type: ProcessRuleType.COMMAND,
+    target: Target.PROCESS,
+    severity: SeverityLevel.HIGH,
+    commandPattern:
+      /\b(?:reg|schtasks|sc|icacls|takeown|net|netsh|wmic|rundll32|regsvr32)\.exe\b|\b(?:Set-ExecutionPolicy|(?:New|Set|Remove)-Service|(?:Register|Unregister)-ScheduledTask|(?:Set|Add|Remove)-MpPreference|(?:New|Set|Remove|Disable)-NetFirewallRule|(?:New|Remove)-LocalUser|(?:Add|Remove)-LocalGroupMember|(?:Restart|Stop)-Computer)\b/i,
+    confidence: 0.9,
+  },
 ];
 
 export function getRuleById(id: string): ProcessRule | undefined {
