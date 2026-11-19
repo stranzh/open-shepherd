@@ -328,7 +328,7 @@ export const FS_RULES: FsRule[] = [
   {
     id: 'sensitive_windows_credentials_read',
     name: 'Windows / Browser / System Credentials Read',
-    description: 'Detected read access to Windows credential vault, browser profile, registry hive, or PowerShell history',
+    description: 'Detected read access to Windows credential vault, browser profile, or registry hive',
     type: FsRuleType.READ,
     target: Target.FILESYSTEM,
     severity: SeverityLevel.HIGH,
@@ -340,7 +340,7 @@ export const FS_RULES: FsRule[] = [
   {
     id: 'sensitive_windows_credentials_write',
     name: 'Windows / Browser / System Credentials Write',
-    description: 'Detected write access to Windows credential vault, browser profile, registry hive, or PowerShell history',
+    description: 'Detected write access to Windows credential vault, browser profile, or registry hive',
     type: FsRuleType.WRITE,
     target: Target.FILESYSTEM,
     severity: SeverityLevel.HIGH,
