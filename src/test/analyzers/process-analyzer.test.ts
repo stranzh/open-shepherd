@@ -13,6 +13,7 @@ import { ExtensionInfo } from '../../lib/events/ext-events';
 import { PROCESS_RULES } from '../../detection/process-rules';
 import { AllowListService } from '../../lib/services/allowlist-service';
 import { IDEStatusService } from '../../lib/services/ide-status-service';
+import { CorrelationEngine } from '../../monitor/analysis/correlation-engine';
 import { createMockExtensionInfo } from '../test-utils';
 
 suite('ProcessAnalyzer Tests', () => {
@@ -22,6 +23,7 @@ suite('ProcessAnalyzer Tests', () => {
   let emitSecurityEventStub: sinon.SinonStub;
 
   setup(() => {
+    CorrelationEngine.getInstance().clear();
     analyzer = new ProcessAnalyzer();
 
     // Mock AllowListService
@@ -34,6 +36,7 @@ suite('ProcessAnalyzer Tests', () => {
   });
 
   teardown(() => {
+    CorrelationEngine.getInstance().clear();
     sinon.restore();
   });
 

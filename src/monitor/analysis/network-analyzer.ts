@@ -1,8 +1,9 @@
-import { IoC, SeverityLevel, SecurityEvent } from '../../lib/events/sec-events';
+import { IoC, SeverityLevel, SecurityEvent, CorrelationRuleType } from '../../lib/events/sec-events';
 import { NetworkEvent } from '../../lib/events/network-events';
 import { Logger } from '../../lib/logger';
 import { IDEStatusService } from '../../lib/services/ide-status-service';
 import { AnalysisResult } from './analyzer';
+import { CorrelationEngine } from './correlation-engine';
 import {
   NETWORK_RULES,
   NetworkRuleType,
@@ -61,6 +62,25 @@ export class NetworkAnalyzer {
       const result = this.checkExternalIp(url, ev, ipRule);
       if (result) {
         return result;
+      }
+    }
+
+    // Cross-domain kill-chain correlation: sensitive local read followed by outbound network request
+    if (ev.extension) {
+      const correlated = CorrelationEngine.getInstance().correlateOutboundAction(ev.extension.id, 'network', url);
+      if (correlated) {
+        return new AnalysisResult(
+          { allowed: false },
+          new SecurityEvent(ev, ev.extension, SeverityLevel.HIGH, CorrelationRuleType.KILL_CHAIN, [
+            {
+              finding: url,
+              rule: correlated.rule,
+              description: correlated.description,
+              confidence: 0.9,
+              severity: SeverityLevel.HIGH,
+            },
+          ]),
+        );
       }
     }
 

@@ -119,6 +119,66 @@ export const PROCESS_RULES: ProcessRule[] = [
       /\b(?:reg|schtasks|sc|icacls|takeown|net|netsh|wmic|rundll32|regsvr32)\.exe\b|\b(?:Set-ExecutionPolicy|(?:New|Set|Remove)-Service|(?:Register|Unregister)-ScheduledTask|(?:Set|Add|Remove)-MpPreference|(?:New|Set|Remove|Disable)-NetFirewallRule|(?:New|Remove)-LocalUser|(?:Add|Remove)-LocalGroupMember|(?:Restart|Stop)-Computer)\b/i,
     confidence: 0.9,
   },
+
+  // Environment variable injection (LD_PRELOAD, DYLD_INSERT_LIBRARIES, NODE_OPTIONS)
+  {
+    id: 'env_injection_preload',
+    name: 'Process Environment Injection',
+    description: 'Detected dynamic linker preload or Node.js runtime option injection in child process environment',
+    type: ProcessRuleType.COMMAND,
+    target: Target.PROCESS,
+    severity: SeverityLevel.HIGH,
+    optionsMatcher: (opts) => {
+      const env = opts['env'];
+      if (!env || typeof env !== 'object' || env === process.env) {
+        return false;
+      }
+      const envObj = env as Record<string, unknown>;
+      for (const preloadKey of ['LD_PRELOAD', 'DYLD_INSERT_LIBRARIES']) {
+        const val = envObj[preloadKey];
+        if (typeof val === 'string' && val && val !== process.env[preloadKey]) {
+          return true;
+        }
+      }
+      const nodeOpts = envObj['NODE_OPTIONS'];
+      return (
+        typeof nodeOpts === 'string' &&
+        nodeOpts !== process.env['NODE_OPTIONS'] &&
+        /(?:--require|--import|-r\b)/i.test(nodeOpts)
+      );
+    },
+    confidence: 0.95,
+  },
+
+  // Explicit forwarding of sensitive credential env vars to untrusted child process
+  {
+    id: 'env_secret_leak',
+    name: 'Sensitive Environment Variable Forwarding',
+    description: 'Detected explicit sensitive API/cloud credential variable passed to child process environment',
+    type: ProcessRuleType.COMMAND,
+    target: Target.PROCESS,
+    severity: SeverityLevel.MEDIUM,
+    optionsMatcher: (opts) => {
+      const env = opts['env'];
+      if (!env || typeof env !== 'object' || env === process.env) {
+        return false;
+      }
+      const envObj = env as Record<string, unknown>;
+      const sensitiveKeys = [
+        'AWS_SECRET_ACCESS_KEY',
+        'AWS_SESSION_TOKEN',
+        'GITHUB_TOKEN',
+        'GH_TOKEN',
+        'OPENAI_API_KEY',
+        'ANTHROPIC_API_KEY',
+        'NPM_TOKEN',
+      ];
+      return sensitiveKeys.some(
+        (key) => typeof envObj[key] === 'string' && envObj[key] !== process.env[key] && Boolean(envObj[key]),
+      );
+    },
+    confidence: 0.85,
+  },
 ];
 
 export function getRuleById(id: string): ProcessRule | undefined {

@@ -12,12 +12,21 @@ import { Logger } from '../logger';
 export enum BlockedOperationType {
   REQUEST = 'request',
   RESPONSE = 'response',
+  FETCH = 'fetch',
+  SOCKET = 'socket',
+  DNS = 'dns',
   EXEC = 'exec',
   SPAWN = 'spawn',
   EXEC_SYNC = 'execSync',
+  WORKER = 'worker',
+  VM = 'vm',
   TASK = 'task',
+  WORKSPACE = 'workspace',
   FS_READ = 'fsRead',
   FS_WRITE = 'fsWrite',
+  CLIPBOARD = 'clipboard',
+  EXTERNAL_URI = 'externalUri',
+  CORRELATION = 'correlation',
 }
 
 export class NotificationService {
@@ -38,7 +47,12 @@ export class NotificationService {
     const getOperationTitle = (operationType: BlockedOperationType): string => {
       switch (operationType) {
         case BlockedOperationType.REQUEST:
+        case BlockedOperationType.FETCH:
           return 'Request';
+        case BlockedOperationType.SOCKET:
+          return 'Socket Connection';
+        case BlockedOperationType.DNS:
+          return 'DNS Query';
         case BlockedOperationType.RESPONSE:
           return 'Response';
         case BlockedOperationType.EXEC:
@@ -47,8 +61,20 @@ export class NotificationService {
           return 'Process Spawn';
         case BlockedOperationType.EXEC_SYNC:
           return 'Synchronous Process Execution';
+        case BlockedOperationType.WORKER:
+          return 'Worker Thread';
+        case BlockedOperationType.VM:
+          return 'VM Code Execution';
         case BlockedOperationType.TASK:
           return 'Task Execution';
+        case BlockedOperationType.WORKSPACE:
+          return 'Workspace Configuration';
+        case BlockedOperationType.CLIPBOARD:
+          return 'Clipboard Access';
+        case BlockedOperationType.EXTERNAL_URI:
+          return 'External URI Open';
+        case BlockedOperationType.CORRELATION:
+          return 'Kill-Chain Exfiltration';
         default:
           return 'Operation';
       }
@@ -201,6 +227,7 @@ export class NotificationService {
                         <div class="content">${content.replace(/\n/g, '<br>')}</div>
                         <div class="button-container">
                             <button class="ok-button" onclick="dismissModal()">Continue blocking</button>
+                            ${identifier && !isWorkspace ? '<button class="ignore-button" onclick="allowSession()">Allow once (session)</button>' : ''}
                             ${identifier ? `<button class="ignore-button" onclick="ignoreItem()">${isWorkspace ? 'Trust this workspace' : 'Allow this extension'}</button>` : ''}
                         </div>
                         ${identifier && !isWorkspace ? '<p class="allow-caveat">Allows all future operations from this extension (network, process, file system, and tasks), not just this specific one.</p>' : ''}
@@ -210,6 +237,10 @@ export class NotificationService {
                         
                         function dismissModal() {
                             vscode.postMessage({ command: 'dismiss' });
+                        }
+
+                        function allowSession() {
+                            vscode.postMessage({ command: 'allowSession' });
                         }
                         
                         function ignoreItem() {
@@ -233,6 +264,12 @@ export class NotificationService {
       // Handle messages from webview
       panel.webview.onDidReceiveMessage(async (message) => {
         if (message.command === 'dismiss') {
+          panel.dispose();
+          resolve();
+        } else if (message.command === 'allowSession' && identifier && !isWorkspace) {
+          AllowListService.getInstance().allowOnceForSession(identifier);
+          SidebarService.getInstance().refreshAllowListView();
+          vscode.window.showInformationMessage(`Extension ${identifier} allowed for the current session only.`);
           panel.dispose();
           resolve();
         } else if (message.command === 'ignore' && identifier) {

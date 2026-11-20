@@ -11,6 +11,7 @@ import { NetworkAnalyzer } from '../../monitor/analysis/network-analyzer';
 import { NetworkEvent } from '../../lib/events/network-events';
 import { AllowListService } from '../../lib/services/allowlist-service';
 import { IDEStatusService } from '../../lib/services/ide-status-service';
+import { CorrelationEngine } from '../../monitor/analysis/correlation-engine';
 import { createMockExtensionInfo } from '../test-utils';
 
 suite('NetworkAnalyzer Tests', () => {
@@ -20,6 +21,7 @@ suite('NetworkAnalyzer Tests', () => {
   let emitSecurityEventStub: sinon.SinonStub;
 
   setup(() => {
+    CorrelationEngine.getInstance().clear();
     analyzer = new NetworkAnalyzer();
 
     // Mock AllowListService
@@ -32,6 +34,7 @@ suite('NetworkAnalyzer Tests', () => {
   });
 
   teardown(() => {
+    CorrelationEngine.getInstance().clear();
     sinon.restore();
   });
 
@@ -360,9 +363,19 @@ suite('NetworkAnalyzer Tests', () => {
       expect(result!.verdict.allowed).to.be.true;
     });
 
-    test('should allow cloud metadata service IP 169.254.x.x', () => {
+    test('should block cloud metadata service IP 169.254.169.254 as SSRF', () => {
       const extensionInfo = createMockExtensionInfo('test.extension', true);
       const event = new NetworkEvent('http', 'http://169.254.169.254', 'request:pre', __filename, extensionInfo);
+
+      const result = analyzer.analyze(event);
+
+      expect(result!.verdict.allowed).to.be.false;
+      expect(result!.securityEvent!.iocs[0].rule).to.include('Cloud Metadata SSRF');
+    });
+
+    test('should allow non-metadata link-local IP 169.254.x.x', () => {
+      const extensionInfo = createMockExtensionInfo('test.extension', true);
+      const event = new NetworkEvent('http', 'http://169.254.1.1', 'request:pre', __filename, extensionInfo);
 
       const result = analyzer.analyze(event);
 

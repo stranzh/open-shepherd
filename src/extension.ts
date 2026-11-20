@@ -3,6 +3,7 @@
  * Activates the IDE Shepherd security monitoring system
  */
 
+import * as fs from 'fs';
 import * as vscode from 'vscode';
 import { Logger } from './lib/logger';
 import { moduleLoaderPatcher } from './monitor/index';
@@ -10,9 +11,12 @@ import { IDEStatusService } from './lib/services/ide-status-service';
 import { SidebarService } from './lib/services/sidebar-service';
 import { AllowListService } from './lib/services/allowlist-service';
 import { TrustedWorkspaceService } from './lib/services/trusted-workspace-service';
+import { ExtensionIntegrityService } from './lib/services/extension-integrity-service';
+import { ExportFormat, exportSecurityEvents } from './lib/services/siem-exporter';
 import { DatadogTelemetryService } from './lib/services/datadog/datadog-service';
 import { ExtensionChangeService } from './lib/services/extension-lifecycle-service';
 import { TaskScanner } from './monitor/analysis/task-analyzer';
+import { WorkspaceSecurityScanner } from './scanner/workspace-security-scanner';
 import { WelcomeService } from './lib/services/welcome-service';
 
 export function activate(context: vscode.ExtensionContext) {
@@ -25,6 +29,12 @@ export function activate(context: vscode.ExtensionContext) {
     Logger.info('IDE Shepherd Extension: Activating module loader patcher...');
     moduleLoaderPatcher.patch();
     Logger.info('IDE Shepherd Extension: Module loader patcher activated successfully');
+
+    // Initialize Extension Integrity Service
+    const integrityService = ExtensionIntegrityService.getInstance();
+    integrityService.initialize(context).then(() => {
+      Logger.info('IDE Shepherd Extension: Extension Integrity Service initialized');
+    });
 
     // Initialize Allow List Service
     const allowListService = AllowListService.getInstance();
@@ -64,6 +74,11 @@ export function activate(context: vscode.ExtensionContext) {
     taskScanner.activate(context);
     Logger.info('IDE Shepherd Extension: Task Scanner activated successfully');
 
+    // Activate Pre-Execution Workspace & AI Config Scanner
+    const workspaceScanner = WorkspaceSecurityScanner.getInstance();
+    workspaceScanner.activate(context);
+    Logger.info('IDE Shepherd Extension: Workspace Security Scanner activated');
+
     const statusCommand = vscode.commands.registerCommand('ide-shepherd.showStatus', () => {
       IDEStatusService.showStatus();
     });
@@ -74,6 +89,32 @@ export function activate(context: vscode.ExtensionContext) {
 
     const scanExtensionsCommand = vscode.commands.registerCommand('ide-shepherd.scanExtensions', () => {
       sidebarService.triggerExtensionAnalysis();
+    });
+
+    const scanWorkspaceCommand = vscode.commands.registerCommand('ide-shepherd.scanWorkspace', async () => {
+      const findings = await workspaceScanner.scanAllWorkspaces();
+      vscode.window.showInformationMessage(`IDE Shepherd workspace scan complete: ${findings.length} issue(s) found.`);
+    });
+
+    const exportEventsCommand = vscode.commands.registerCommand('ide-shepherd.exportEvents', async () => {
+      const pickOpts = { placeHolder: 'Select SIEM / Security export format' };
+      const format = await vscode.window.showQuickPick(['jsonl', 'cef', 'ocsf', 'sarif'], pickOpts);
+      if (!format) {
+        return;
+      }
+      const status = await IDEStatusService.getStatus();
+      const content = exportSecurityEvents(status.lastSecurityEvents, format as ExportFormat);
+      const extMap: Record<string, string> = { jsonl: 'jsonl', cef: 'cef', ocsf: 'jsonl', sarif: 'sarif' };
+      const filterExt = extMap[format] || 'txt';
+      const saveOpts = { filters: { 'Security Export': [filterExt] }, saveLabel: 'Export Security Events' };
+      const uri = await vscode.window.showSaveDialog(saveOpts);
+      if (uri) {
+        fs.writeFileSync(uri.fsPath, content, 'utf8');
+        const exportedCount = status.lastSecurityEvents.length;
+        const hasMore = status.totalSecurityEvents > exportedCount;
+        const capNote = hasMore ? ` (latest ${exportedCount} of ${status.totalSecurityEvents})` : '';
+        vscode.window.showInformationMessage(`Exported ${exportedCount} event(s)${capNote} to ${uri.fsPath}`);
+      }
     });
 
     const removeFromAllowListCommand = vscode.commands.registerCommand(
@@ -122,6 +163,8 @@ export function activate(context: vscode.ExtensionContext) {
       statusCommand,
       refreshStatusCommand,
       scanExtensionsCommand,
+      scanWorkspaceCommand,
+      exportEventsCommand,
       removeFromAllowListCommand,
       addToAllowListCommand,
       clearAllowListCommand,

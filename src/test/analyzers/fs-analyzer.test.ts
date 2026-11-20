@@ -13,6 +13,7 @@ import { FsOperation } from '../../lib/events/fs-events';
 import { FS_RULES } from '../../detection/fs-rules';
 import { AllowListService } from '../../lib/services/allowlist-service';
 import { IDEStatusService } from '../../lib/services/ide-status-service';
+import { CorrelationEngine } from '../../monitor/analysis/correlation-engine';
 import { createMockExtensionInfo } from '../test-utils';
 
 function makeEvent(filePath: string, operation: FsOperation = 'read'): FsEvent {
@@ -32,6 +33,7 @@ suite('FsAnalyzer Tests', () => {
   let emitSecurityEventStub: sinon.SinonStub;
 
   setup(() => {
+    CorrelationEngine.getInstance().clear();
     analyzer = new FsAnalyzer();
 
     const mockAllowListService = { isAllowed: sinon.stub().returns(false) };
@@ -42,6 +44,7 @@ suite('FsAnalyzer Tests', () => {
   });
 
   teardown(() => {
+    CorrelationEngine.getInstance().clear();
     sinon.restore();
   });
 

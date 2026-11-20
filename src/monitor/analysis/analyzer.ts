@@ -1,6 +1,7 @@
 import { Verdict, SecurityEvent } from '../../lib/events/sec-events';
 import { AllowListService } from '../../lib/services/allowlist-service';
 import { IDEStatusService } from '../../lib/services/ide-status-service';
+import { PolicyService } from '../../lib/services/policy-service';
 import { Logger } from '../../lib/logger';
 
 export class AnalysisResult {
@@ -14,7 +15,7 @@ export class AnalysisResult {
 
   /**
    * If the extension is on the allowlist, logs a warning and marks as allowed.
-   * Otherwise, emits the security event if one exists.
+   * Otherwise, emits the security event if one exists and applies policy mode.
    */
   checkAgainstAllowList(extensionId: string, context: string, analyzerName: string): AnalysisResult {
     if (!this.securityEvent) {
@@ -29,11 +30,16 @@ export class AnalysisResult {
         `${analyzerName}: Extension ${extensionId} is on allow list. Activity detected but not blocked: ${context}`,
       );
       return new AnalysisResult({ allowed: true });
-    } else {
-      IDEStatusService.emitSecurityEvent(this.securityEvent).catch((error) => {
-        Logger.error(`${analyzerName}: Failed to record security event: ${error.message}`);
-      });
-      return this;
     }
+
+    IDEStatusService.emitSecurityEvent(this.securityEvent).catch((error) => {
+      Logger.error(`${analyzerName}: Failed to record security event: ${error.message}`);
+    });
+
+    if (!PolicyService.getInstance().shouldBlock(this.securityEvent.severity, !this.verdict.allowed)) {
+      return new AnalysisResult({ allowed: true }, this.securityEvent);
+    }
+
+    return this;
   }
 }

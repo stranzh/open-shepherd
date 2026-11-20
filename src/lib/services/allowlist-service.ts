@@ -10,16 +10,25 @@ import * as vscode from 'vscode';
 import { Logger } from '../logger';
 import { ExtensionsRepository } from '../extensions';
 import { CONFIG } from '../config';
+import { ExtensionIntegrityService } from './extension-integrity-service';
+
+export interface AllowListEntryMetadata {
+  expiresAt?: number;
+  integrityHash?: string;
+}
 
 interface AllowListState {
   userExtensions: string[]; // extension IDs manually allowed by user
   trustedPublishers: string[]; // all trusted publishers (initialized with defaults, can be modified by user)
+  entryMetadata?: Record<string, AllowListEntryMetadata>;
 }
 
 export class AllowListService {
   private static _instance: AllowListService;
   private _context: vscode.ExtensionContext | null = null; // ensures persistence of allow list across sessions
   private _userAllowList: Set<string> = new Set();
+  private _sessionAllowList: Set<string> = new Set();
+  private _entryMetadata: Map<string, AllowListEntryMetadata> = new Map();
   private _builtInAllowList: Set<string> = new Set();
   private _trustedPublisherAllowList: Set<string> = new Set(); // Extension IDs from trusted publishers
   private _trustedPublishers: Set<string> = new Set();
@@ -89,31 +98,73 @@ export class AllowListService {
   }
 
   isAllowed(extensionId: string): boolean {
+    if (ExtensionIntegrityService.getInstance().hasIntegrityDrift(extensionId)) {
+      Logger.warn(`AllowListService: Denying allowlist trust due to integrity drift for ${extensionId}`);
+      return false;
+    }
+
+    const meta = this._entryMetadata.get(extensionId);
+    if (meta?.expiresAt && Date.now() > meta.expiresAt) {
+      this._userAllowList.delete(extensionId);
+      this._entryMetadata.delete(extensionId);
+      this.saveState().catch(() => {});
+    }
+
+    if (meta?.integrityHash) {
+      const currentDigest = ExtensionIntegrityService.getInstance().getBaselineDigest(extensionId);
+      if (currentDigest && currentDigest !== meta.integrityHash) {
+        return false;
+      }
+    }
+
     return (
       this._builtInAllowList.has(extensionId) ||
       this._trustedPublisherAllowList.has(extensionId) ||
-      this._userAllowList.has(extensionId)
+      this._userAllowList.has(extensionId) ||
+      this._sessionAllowList.has(extensionId)
     );
   }
 
-  async addToUserAllowList(extensionId: string): Promise<void> {
-    if (this.isAllowed(extensionId)) {
+  allowOnceForSession(extensionId: string): void {
+    if (!extensionId) {
+      return;
+    }
+    this._sessionAllowList.add(extensionId);
+    Logger.info(`AllowListService: Temporarily allowed ${extensionId} for current session`);
+  }
+
+  async addToUserAllowList(extensionId: string, options?: { ttlMs?: number; integrityHash?: string }): Promise<void> {
+    if (this.isAllowed(extensionId) && !options?.ttlMs && !options?.integrityHash) {
       Logger.debug(`AllowListService: Extension ${extensionId} is already allowed`);
       return;
     }
 
     this._userAllowList.add(extensionId);
+    const meta: AllowListEntryMetadata = {};
+    if (options?.ttlMs && options.ttlMs > 0) {
+      meta.expiresAt = Date.now() + options.ttlMs;
+    }
+    const digest = options?.integrityHash || ExtensionIntegrityService.getInstance().getBaselineDigest(extensionId);
+    if (digest) {
+      meta.integrityHash = digest;
+    }
+    if (meta.expiresAt || meta.integrityHash) {
+      this._entryMetadata.set(extensionId, meta);
+    }
+
     await this.saveState();
     Logger.info(`AllowListService: Added ${extensionId} to user allow list`);
   }
 
   async removeFromUserAllowList(extensionId: string): Promise<void> {
-    if (!this._userAllowList.has(extensionId)) {
+    if (!this._userAllowList.has(extensionId) && !this._sessionAllowList.has(extensionId)) {
       Logger.debug(`AllowListService: Extension ${extensionId} not in user allow list`);
       return;
     }
 
     this._userAllowList.delete(extensionId);
+    this._sessionAllowList.delete(extensionId);
+    this._entryMetadata.delete(extensionId);
     await this.saveState();
     Logger.info(`AllowListService: Removed ${extensionId} from user allow list`);
   }
@@ -190,6 +241,17 @@ export class AllowListService {
         Logger.info('AllowListService: No saved state found, starting fresh');
       }
 
+      this._entryMetadata.clear();
+      if (savedState?.entryMetadata) {
+        for (const [id, meta] of Object.entries(savedState.entryMetadata)) {
+          if (!meta.expiresAt || meta.expiresAt > Date.now()) {
+            this._entryMetadata.set(id, meta);
+          } else {
+            this._userAllowList.delete(id);
+          }
+        }
+      }
+
       if (savedState?.trustedPublishers) {
         this._trustedPublishers = new Set(savedState.trustedPublishers);
         Logger.info(`AllowListService: Loaded ${this._trustedPublishers.size} trusted publishers`);
@@ -214,6 +276,9 @@ export class AllowListService {
         userExtensions: Array.from(this._userAllowList),
         trustedPublishers: Array.from(this._trustedPublishers),
       };
+      if (this._entryMetadata.size > 0) {
+        state.entryMetadata = Object.fromEntries(this._entryMetadata.entries());
+      }
 
       await this._context.globalState.update(AllowListService.STORAGE_KEY, state);
       Logger.debug('AllowListService: State saved successfully');
@@ -227,6 +292,8 @@ export class AllowListService {
    */
   async clearUserAllowList(): Promise<void> {
     this._userAllowList.clear();
+    this._sessionAllowList.clear();
+    this._entryMetadata.clear();
     await this.saveState();
     Logger.info('AllowListService: User allow list cleared');
   }
