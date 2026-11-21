@@ -6,7 +6,25 @@ import { NetworkRuleType } from '../../detection/network-rules';
 import { ProcessRuleType } from '../../detection/process-rules';
 import { TaskRuleType } from '../../detection/task-rules';
 import { FsRuleType } from '../../detection/fs-rules';
+import { WorkspaceRuleType } from '../../detection/workspace-rules';
 import { ExtensionInfo, WorkspaceInfo, TargetEvent, Target, Timestamp } from './ext-events';
+
+export enum CorrelationRuleType {
+  KILL_CHAIN = 'KILL_CHAIN',
+}
+
+export enum IntegrityRuleType {
+  INTEGRITY_DRIFT = 'INTEGRITY_DRIFT',
+}
+
+export type SecurityEventType =
+  | ProcessRuleType
+  | NetworkRuleType
+  | TaskRuleType
+  | FsRuleType
+  | WorkspaceRuleType
+  | CorrelationRuleType
+  | IntegrityRuleType;
 
 export enum SeverityLevel {
   LOW = 'low',
@@ -55,7 +73,7 @@ export class SecurityEvent {
   public readonly secEventId: string;
   public readonly timestamp: Timestamp;
   public readonly severity: SeverityLevel;
-  public readonly securityEventType: ProcessRuleType | NetworkRuleType | TaskRuleType | FsRuleType;
+  public readonly securityEventType: SecurityEventType;
 
   public readonly extension?: ExtensionInfo;
   public readonly workspace?: WorkspaceInfo;
@@ -70,7 +88,7 @@ export class SecurityEvent {
     originalEvent: TargetEvent<Target>,
     source: ExtensionInfo | WorkspaceInfo,
     severity: SeverityLevel,
-    securityEventType: ProcessRuleType | NetworkRuleType | TaskRuleType | FsRuleType,
+    securityEventType: SecurityEventType,
     iocs: IoC[],
     callerExtension?: ExtensionInfo,
     timestamp: Timestamp = Date.now(),

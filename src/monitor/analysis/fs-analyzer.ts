@@ -2,8 +2,9 @@ import { SecurityEvent } from '../../lib/events/sec-events';
 import { Logger } from '../../lib/logger';
 import { IDEStatusService } from '../../lib/services/ide-status-service';
 import { AnalysisResult } from './analyzer';
+import { CorrelationEngine } from './correlation-engine';
 import { FsEvent } from '../../lib/events/fs-events';
-import { FS_RULES, FsRule } from '../../detection/fs-rules';
+import { FS_RULES, FsRule, FsRuleType } from '../../detection/fs-rules';
 
 export class FsAnalyzer {
   analyze(ev: FsEvent): AnalysisResult | undefined {
@@ -19,6 +20,9 @@ export class FsAnalyzer {
         const checkResult = this.checkRule(ev, normalizedPath, rule);
         if (checkResult.securityEvent) {
           result = checkResult;
+          if (rule.type === FsRuleType.READ && ev.extension) {
+            CorrelationEngine.getInstance().recordSensitiveAccess(ev.extension.id, 'fs_sensitive_read', ev.path);
+          }
           break; // stop on first security event found
         }
       }

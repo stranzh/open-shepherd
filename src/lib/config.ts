@@ -6,14 +6,20 @@ export const CONFIG = {
   EXTENSION: { ID: 'stranzh.open-shepherd', NAME: 'Open Shepherd', OUTPUT_CHANNEL_NAME: 'Open Shepherd' },
   MODULES: {
     HTTP_MODULES: ['http', 'https', 'node:http', 'node:https'],
+    NET_MODULES: ['net', 'node:net'],
+    TLS_MODULES: ['tls', 'node:tls'],
+    DNS_MODULES: ['dns', 'node:dns'],
     CHILD_PROCESS_MODULES: ['child_process', 'node:child_process'],
     FS_MODULES: ['fs', 'node:fs', 'fs/promises', 'node:fs/promises'],
+    WORKER_MODULES: ['worker_threads', 'node:worker_threads'],
+    VM_MODULES: ['vm', 'node:vm'],
     VSCODE_MODULES: ['vscode'],
   },
   LOGGER: { MAX_TRUNCATE_LENGTH: 1000, LEVELS: { INFO: 'INFO', WARN: 'WARN', ERROR: 'ERROR', DEBUG: 'DEBUG' } },
   NETWORK: {
     MAX_CAPTURE_BYTES: 256 * 1024, // 256 kB
   },
+  POLICY: { DEFAULT_MODE: 'balanced' as 'strict' | 'balanced' | 'audit-only', CORRELATION_WINDOW_MS: 60_000 },
   UI: {
     AUTO_REFRESH: {
       ENABLED: true,

@@ -2,9 +2,10 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 
-// Capture unpatched fs functions at load time so emitEvent never re-enters fs-instrument hooks.
+// Capture unpatched fs/fetch functions at load time so emitEvent never re-enters hooks.
 const rawMkdirSync = fs.mkdirSync.bind(fs);
 const rawAppendFileSync = fs.appendFileSync.bind(fs);
+const rawFetch = typeof globalThis.fetch === 'function' ? globalThis.fetch.bind(globalThis) : null;
 
 export interface ShepherdEvent {
   timestamp: string;
@@ -31,8 +32,8 @@ export function emitEvent(
   }
 
   const webhookUrl = options?.webhookUrl || process.env.OPEN_SHEPHERD_WEBHOOK;
-  if (webhookUrl) {
-    fetch(webhookUrl, {
+  if (webhookUrl && rawFetch) {
+    rawFetch(webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload),

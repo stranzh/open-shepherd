@@ -1,7 +1,8 @@
-import { SecurityEvent } from '../../lib/events/sec-events';
+import { CorrelationRuleType, SecurityEvent, SeverityLevel } from '../../lib/events/sec-events';
 import { Logger } from '../../lib/logger';
 import { IDEStatusService } from '../../lib/services/ide-status-service';
 import { AnalysisResult } from './analyzer';
+import { CorrelationEngine } from './correlation-engine';
 import { ExecEvent } from '../../lib/events/process-events';
 import { PROCESS_RULES } from '../../detection/process-rules';
 
@@ -24,6 +25,26 @@ export class ProcessAnalyzer {
       if (!ev.extension) {
         Logger.error('ProcessAnalyzer: Process event missing extension info');
         return new AnalysisResult();
+      }
+
+      if (!result.securityEvent) {
+        const fullCommand = `${ev.cmd} ${ev.args.join(' ')}`.trim();
+        const corrEngine = CorrelationEngine.getInstance();
+        const correlated = corrEngine.correlateOutboundAction(ev.extension.id, 'process', fullCommand);
+        if (correlated) {
+          result = new AnalysisResult(
+            { allowed: false },
+            new SecurityEvent(ev, ev.extension, SeverityLevel.HIGH, CorrelationRuleType.KILL_CHAIN, [
+              {
+                finding: fullCommand,
+                rule: correlated.rule,
+                description: correlated.description,
+                confidence: 0.9,
+                severity: SeverityLevel.HIGH,
+              },
+            ]),
+          );
+        }
       }
 
       result = result.checkAgainstAllowList(ev.extension.id, ev.cmd, 'ProcessAnalyzer');

@@ -8,6 +8,7 @@ import { Target } from '../lib/events/ext-events';
 export enum NetworkRuleType {
   URL = 'URL',
   IP = 'IP',
+  DNS = 'DNS',
 }
 
 export interface NetworkRule {
@@ -25,6 +26,19 @@ export interface NetworkRule {
  * Network rules for traffic analysis
  */
 export const NETWORK_RULES: NetworkRule[] = [
+  // Cloud Metadata & SSRF Rules
+  {
+    id: 'cloud_metadata_ssrf',
+    name: 'Cloud Metadata SSRF',
+    description: 'Request to cloud instance metadata service endpoint',
+    type: NetworkRuleType.URL,
+    target: Target.NETWORK,
+    severity: SeverityLevel.HIGH,
+    pattern:
+      /(?:^|\/\/(?:[^/@]+@)?)(?:\[::ffff:)?(?:169\.254\.169\.254|169\.254\.170\.2|100\.100\.100\.200|metadata\.google\.internal|metadata\.goog|\[?fd00:ec2::254\]?)\]?\.?(?:[:/?#]|$)/i,
+    confidence: 1,
+  },
+
   // Suspicious Domain Rules
   {
     id: 'suspicious_domains',
@@ -34,7 +48,7 @@ export const NETWORK_RULES: NetworkRule[] = [
     target: Target.NETWORK,
     severity: SeverityLevel.HIGH,
     pattern:
-      /(bit\.ly|workers\.dev|appdomain\.cloud|ngrok\.io|termbin\.com|localhost\.run|webhook\.(site|cool)|oastify\.com|burpcollaborator\.(me|net)|trycloudflare\.com|oast\.(pro|live|site|online|fun|me)|ply\.gg|pipedream\.net|dnslog\.cn|webhook-test\.com|typedwebhook\.tools|beeceptor\.com|ngrok-free\.(app|dev))/,
+      /(bit\.ly|workers\.dev|appdomain\.cloud|ngrok\.io|termbin\.com|localhost\.run|webhook\.(site|cool)|oastify\.com|burpcollaborator\.(me|net)|trycloudflare\.com|oast\.(pro|live|site|online|fun|me)|ply\.gg|pipedream\.net|dnslog\.cn|webhook-test\.com|typedwebhook\.tools|beeceptor\.com|ngrok-free\.(app|dev)|interact\.sh)/,
     confidence: 1,
   },
 
@@ -90,7 +104,7 @@ export const NETWORK_RULES: NetworkRule[] = [
 
 // Helper patterns for IP filtering
 // Excludes:
-// - Local IPv4: 127.x.x.x, 10.x.x.x, 192.168.x.x, 172.16-31.x.x, 169.254.x.x (link-local/metadata)
+// - Local IPv4: 127.x.x.x, 10.x.x.x, 192.168.x.x, 172.16-31.x.x, 169.254.x.x (link-local; metadata IP 169.254.169.254 is caught above)
 // - Public DNS used in tests: 1.1.1.1 (Cloudflare), 8.8.8.8 (Google)
 // - Localhost
 export const EXCLUDED_IP_PATTERN =
@@ -99,6 +113,44 @@ export const EXCLUDED_IP_PATTERN =
 // Wildcard IP (0.0.0.0) and localhost
 export const WILDCARD_IP_PATTERN = /0\.0\.0\.0/;
 export const LOCALHOST_PATTERN = /localhost/i;
+
+function shannonEntropy(input: string): number {
+  if (!input.length) {
+    return 0;
+  }
+  const freq = new Map<string, number>();
+  for (const ch of input) {
+    freq.set(ch, (freq.get(ch) ?? 0) + 1);
+  }
+  let entropy = 0;
+  for (const count of freq.values()) {
+    const p = count / input.length;
+    entropy -= p * Math.log2(p);
+  }
+  return entropy;
+}
+
+export function isSuspiciousDnsQuery(hostname: string): string | null {
+  if (!hostname || typeof hostname !== 'string') {
+    return null;
+  }
+  const clean = hostname.trim().toLowerCase().replace(/\.$/, '');
+  const labels = clean.split('.').filter(Boolean);
+  if (labels.length < 2) {
+    return null;
+  }
+  const maxLabelLen = Math.max(...labels.map((l) => l.length));
+  if (maxLabelLen >= 50) {
+    return `Excessively long DNS label (${maxLabelLen} chars) in ${clean}`;
+  }
+  if (labels.length >= 6 && clean.length >= 64) {
+    const sub = labels.slice(0, -2).join('');
+    if (shannonEntropy(sub) >= 3.6) {
+      return `High-entropy multi-label DNS query (${labels.length} labels) in ${clean}`;
+    }
+  }
+  return null;
+}
 
 export function getRuleById(id: string): NetworkRule | undefined {
   return NETWORK_RULES.find((rule) => rule.id === id);

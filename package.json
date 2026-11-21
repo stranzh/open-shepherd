@@ -152,6 +152,18 @@
         "title": "Clear Task Timeline",
         "category": "IDE Shepherd",
         "icon": "$(clear-all)"
+      },
+      {
+        "command": "ide-shepherd.scanWorkspace",
+        "title": "Scan Workspace & AI Configs",
+        "category": "IDE Shepherd",
+        "icon": "$(shield)"
+      },
+      {
+        "command": "ide-shepherd.exportEvents",
+        "title": "Export Security Events (SIEM / SARIF)",
+        "category": "IDE Shepherd",
+        "icon": "$(export)"
       }
     ],
     "menus": {
@@ -164,6 +176,11 @@
         {
           "command": "ide-shepherd.scanExtensions",
           "when": "view == ide-shepherd-extensions",
+          "group": "navigation"
+        },
+        {
+          "command": "ide-shepherd.exportEvents",
+          "when": "view == ide-shepherd-events",
           "group": "navigation"
         },
         {
@@ -194,6 +211,14 @@
         },
         {
           "command": "ide-shepherd.scanExtensions",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.scanWorkspace",
+          "when": "true"
+        },
+        {
+          "command": "ide-shepherd.exportEvents",
           "when": "true"
         },
         {
@@ -231,6 +256,17 @@
           "default": true,
           "description": "Enable IDE Shepherd security monitoring"
         },
+        "ide-shepherd.policyMode": {
+          "type": "string",
+          "enum": [
+            "strict",
+            "balanced",
+            "audit-only"
+          ],
+          "default": "balanced",
+          "scope": "application",
+          "description": "Enforcement policy profile: strict blocks all threats and untrusted workers; balanced enforces standard blocking rules while permitting non-eval workers; audit-only logs without blocking"
+        },
         "ide-shepherd.autoScan": {
           "type": "boolean",
           "default": true,
@@ -262,12 +298,14 @@
         "ide-shepherd.datadog.isEnabled": {
           "type": "boolean",
           "default": false,
+          "scope": "application",
           "description": "Enable Datadog telemetry integration (requires Datadog Agent)"
         },
         "ide-shepherd.datadog.agentPort": {
           "type": "number",
           "minimum": 1024,
           "maximum": 65535,
+          "scope": "application",
           "description": "Local Datadog Agent port for TCP log forwarding"
         }
       }
