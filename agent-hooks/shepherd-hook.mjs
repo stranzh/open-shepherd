@@ -21,33 +21,98 @@ const DANGEROUS_COMMAND_RE =
 const SUSPICIOUS_URL_RE =
   /(?:169\.254\.169\.254|metadata\.google\.internal|100\.100\.100\.200|ngrok\.io|webhook\.site|oastify\.com|interact\.sh|burpcollaborator\.(?:me|net)|trycloudflare\.com)/i;
 
+const TOOL_INPUT_KEYS = [
+  'command',
+  'CommandLine',
+  'file_path',
+  'path',
+  'AbsolutePath',
+  'TargetFile',
+  'DirectoryPath',
+  'SearchDirectory',
+  'SearchPath',
+  'url',
+  'Url',
+  'pattern',
+  'Query',
+  'Prompt',
+];
+
+const FILE_PATH_KEYS = [
+  'file_path',
+  'path',
+  'AbsolutePath',
+  'TargetFile',
+  'DirectoryPath',
+  'SearchDirectory',
+  'SearchPath',
+];
+
+const PROMPT_INJECTION_RE = /(?:ignore\s+(?:all\s+)?previous\s+instructions|(?:curl|wget)[^\n|]*\|\s*(?:sh|bash)\b)/i;
+
 function summarizeToolInput(toolInput) {
   if (!toolInput || typeof toolInput !== 'object') {
     return null;
   }
   const summary = {};
-  for (const key of ['command', 'file_path', 'path', 'url', 'pattern']) {
+  for (const key of TOOL_INPUT_KEYS) {
     if (typeof toolInput[key] === 'string') {
       summary[key] = toolInput[key].slice(0, 500);
     }
   }
+  if (Array.isArray(toolInput.Subagents)) {
+    summary.subagents_count = toolInput.Subagents.length;
+  }
   return Object.keys(summary).length > 0 ? summary : null;
 }
 
-function evaluatePolicy(input) {
-  const toolInput = input.tool_input;
+function evaluatePolicy(input, eventType) {
+  if (
+    eventType === 'PreInvocation' &&
+    typeof input.lastUserInput === 'string' &&
+    PROMPT_INJECTION_RE.test(input.lastUserInput)
+  ) {
+    return 'Suspicious prompt injection or remote shell directive in PreInvocation input';
+  }
+
+  const toolName = input.tool_name || input.toolCall?.name || null;
+  const toolInput = input.tool_input || input.toolCall?.args || null;
   if (!toolInput || typeof toolInput !== 'object') {
     return null;
   }
-  const filePath = typeof toolInput.file_path === 'string' ? toolInput.file_path : typeof toolInput.path === 'string' ? toolInput.path : '';
+
+  if (
+    toolName === 'define_subagent' &&
+    (toolInput.enable_write_tools === true || toolInput.enable_mcp_tools === true)
+  ) {
+    return 'Privileged subagent definition (write/MCP tools enabled) blocked by Open Shepherd policy';
+  }
+
+  let filePath = '';
+  for (const key of FILE_PATH_KEYS) {
+    if (typeof toolInput[key] === 'string' && toolInput[key].length > 0) {
+      filePath = toolInput[key];
+      break;
+    }
+  }
   if (filePath && SENSITIVE_PATH_RE.test(filePath)) {
     return `Sensitive file access blocked by Open Shepherd policy: ${filePath}`;
   }
-  if (typeof toolInput.command === 'string' && DANGEROUS_COMMAND_RE.test(toolInput.command)) {
+
+  const cmd =
+    typeof toolInput.command === 'string'
+      ? toolInput.command
+      : typeof toolInput.CommandLine === 'string'
+        ? toolInput.CommandLine
+        : '';
+  if (cmd && DANGEROUS_COMMAND_RE.test(cmd)) {
     return `Dangerous shell command blocked by Open Shepherd policy`;
   }
-  if (typeof toolInput.url === 'string' && SUSPICIOUS_URL_RE.test(toolInput.url)) {
-    return `Suspicious or metadata URL blocked by Open Shepherd policy: ${toolInput.url}`;
+
+  const url =
+    typeof toolInput.url === 'string' ? toolInput.url : typeof toolInput.Url === 'string' ? toolInput.Url : '';
+  if (url && SUSPICIOUS_URL_RE.test(url)) {
+    return `Suspicious or metadata URL blocked by Open Shepherd policy: ${url}`;
   }
   return null;
 }
@@ -74,14 +139,23 @@ function handleInput() {
     };
   }
 
-  const eventType = input.hook_event_name || process.argv[2] || 'tool_use';
-  let violation = evaluatePolicy(input);
+  const isAntigravity = Boolean(input.toolCall || input.conversationId || input.workspacePaths);
+  const toolName = input.tool_name || input.toolCall?.name || null;
+  const toolInput = input.tool_input || input.toolCall?.args || null;
+  const eventType =
+    input.hook_event_name ||
+    process.argv[2] ||
+    (input.toolCall ? 'PreToolUse' : input.invocationNum !== undefined ? 'PreInvocation' : 'tool_use');
+
+  let violation = evaluatePolicy(input, eventType);
   if (!violation && truncated) {
     if (SENSITIVE_PATH_RE.test(raw) || DANGEROUS_COMMAND_RE.test(raw) || SUSPICIOUS_URL_RE.test(raw)) {
       violation = 'Suspicious pattern detected in oversized tool input';
     }
   }
-  const blocked = Boolean(violation && eventType === 'PreToolUse' && policyMode === 'enforce');
+  const blocked = Boolean(
+    violation && (eventType === 'PreToolUse' || eventType === 'PreInvocation') && policyMode === 'enforce',
+  );
 
   const event = {
     timestamp: new Date().toISOString(),
@@ -89,10 +163,10 @@ function handleInput() {
     event_type: eventType,
     severity: violation ? 'high' : 'info',
     details: {
-      tool_name: input.tool_name || null,
-      tool_input: summarizeToolInput(input.tool_input),
-      session_id: input.session_id || null,
-      cwd: input.cwd || process.cwd(),
+      tool_name: toolName,
+      tool_input: summarizeToolInput(toolInput),
+      session_id: input.session_id || input.conversationId || null,
+      cwd: input.cwd || (Array.isArray(input.workspacePaths) && input.workspacePaths[0]) || process.cwd(),
       decision: blocked ? 'deny' : violation ? 'audit' : 'allow',
       reason: violation || null,
     },
@@ -123,7 +197,23 @@ function handleInput() {
     }
   }
 
-  if (blocked) {
+  if (isAntigravity) {
+    if (eventType === 'PreToolUse') {
+      process.stdout.write(
+        JSON.stringify(blocked ? { decision: 'deny', reason: violation } : { decision: 'allow' }) + '\n',
+      );
+    } else if (eventType === 'PreInvocation') {
+      process.stdout.write(
+        JSON.stringify(
+          violation && policyMode === 'enforce'
+            ? { injectSteps: [{ errorMessage: { userMessage: violation } }], terminationBehavior: 'terminate' }
+            : {},
+        ) + '\n',
+      );
+    } else {
+      process.stdout.write('{}\n');
+    }
+  } else if (blocked && eventType === 'PreToolUse') {
     process.stdout.write(
       JSON.stringify({
         hookSpecificOutput: {

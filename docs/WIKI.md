@@ -23,7 +23,7 @@
 ## 2. What It Cannot Do & What It Is Not For
 
 - **Not an OS-level EDR / Antivirus**: In VS Code, hooks only cover Node.js APIs inside the extension host. Native binaries, external terminals, or processes outside the IDE are not monitored.
-- **Neovim & AI CLI hooks are audit-only**: They log events for visibility and forensics; they do **not** block commands or file writes.
+- **Neovim hook is audit-only; `shepherd-hook.mjs` enforces by default**: The Neovim plugin logs events for visibility, while `agent-hooks/shepherd-hook.mjs` actively blocks `PreToolUse` / `PreInvocation` violations in enforce mode (default) and logs audit-only when `OPEN_SHEPHERD_MODE=audit`.
 - **Not a Sandbox or Firewall**: It complements—but does not replace—OS user permissions, containers, or network firewalls.
 - **No Datadog Telemetry by Default**: Datadog Agent polling and OCSF submission are disabled unless `ide-shepherd.datadog.isEnabled` is explicitly set to `true`.
 
@@ -91,6 +91,11 @@ Add to `~/.claude/settings.json`:
   }
 }
 ```
+
+### Antigravity App (GUI), Antigravity CLI (agy), and Antigravity IDE
+
+1. Copy [`agent-hooks/antigravity-hooks.example.json`](../agent-hooks/antigravity-hooks.example.json) into `~/.gemini/config/hooks.json` (global across Antigravity App, `agy` CLI, and Antigravity IDE) or `.agents/hooks.json` (workspace-level), updating `/path/to/open-shepherd` to your local clone path.
+2. When running the Open-Shepherd extension inside Antigravity IDE, `WorkspaceSecurityScanner` also audits `.agents/hooks.json`, `.agents/mcp_config.json`, `.agents/rules/*`, `.agents/skills/*/SKILL.md`, `GEMINI.md`, and `~/.gemini/antigravity-cli/settings.json`.
 
 ---
 

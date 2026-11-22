@@ -14,8 +14,10 @@ import {
   WorkspaceFinding,
   WorkspaceRuleType,
   scanAgentRulesFile,
+  scanAntigravityCliSettings,
   scanDevcontainerJson,
   scanGitConfig,
+  scanHooksConfig,
   scanMcpConfig,
   scanPackageManagerConfig,
   scanPackageManifest,
@@ -62,13 +64,35 @@ const CONFIG_SCANNERS: Array<{
   { relPath: '.npmrc', match: (p) => p.endsWith('/.npmrc') || p.endsWith('/pip.conf'), scan: scanPackageManagerConfig },
   { relPath: 'pip.conf', match: () => false, scan: scanPackageManagerConfig },
   { relPath: '.vscode/mcp.json', match: (p) => p.endsWith('/.vscode/mcp.json'), scan: scanMcpConfig },
-  { relPath: '.mcp.json', match: (p) => p.endsWith('/.mcp.json') || p.endsWith('/mcp.json'), scan: scanMcpConfig },
+  {
+    relPath: '.mcp.json',
+    match: (p) => p.endsWith('/.mcp.json') || p.endsWith('/mcp.json') || p.endsWith('/mcp_config.json'),
+    scan: scanMcpConfig,
+  },
+  { relPath: '.agents/mcp_config.json', match: () => false, scan: scanMcpConfig },
+  { relPath: 'mcp_config.json', match: () => false, scan: scanMcpConfig },
+  { relPath: '.antigravity-plugin/mcp_config.json', match: () => false, scan: scanMcpConfig },
   { relPath: '.cursor/mcp.json', match: (p) => p.endsWith('/.cursor/mcp.json'), scan: scanMcpConfig },
   { match: (p) => p.endsWith('/.claude.json') || p.endsWith('/claude_desktop_config.json'), scan: scanMcpConfig },
+  {
+    relPath: '.agents/hooks.json',
+    match: (p) => p.endsWith('/.agents/hooks.json') || p.endsWith('/hooks.json'),
+    scan: scanHooksConfig,
+  },
   { relPath: '.cursorrules', match: (p) => p.endsWith('/.cursorrules'), scan: scanAgentRulesFile },
   { match: (p) => p.includes('/.cursor/rules/'), scan: scanAgentRulesFile },
   { relPath: 'CLAUDE.md', match: (p) => p.endsWith('/claude.md'), scan: scanAgentRulesFile },
   { relPath: 'AGENTS.md', match: (p) => p.endsWith('/agents.md'), scan: scanAgentRulesFile },
+  { relPath: 'GEMINI.md', match: (p) => p.endsWith('/gemini.md'), scan: scanAgentRulesFile },
+  {
+    match: (p) =>
+      p.includes('/.agents/rules/') ||
+      p.includes('/.agents/agents/') ||
+      p.includes('/.agents/skills/') ||
+      p.includes('/.agent/skills/') ||
+      p.endsWith('/skill.md'),
+    scan: scanAgentRulesFile,
+  },
   {
     relPath: '.github/copilot-instructions.md',
     match: (p) => p.endsWith('/copilot-instructions.md'),
@@ -76,6 +100,7 @@ const CONFIG_SCANNERS: Array<{
   },
   { relPath: '.windsurfrules', match: (p) => p.endsWith('/.windsurfrules'), scan: scanAgentRulesFile },
   { relPath: '.clinerules', match: (p) => p.endsWith('/.clinerules'), scan: scanAgentRulesFile },
+  { match: (p) => p.endsWith('/antigravity-cli/settings.json'), scan: scanAntigravityCliSettings },
 ];
 
 export class WorkspaceSecurityScanner {
@@ -139,20 +164,44 @@ export class WorkspaceSecurityScanner {
       }
     }
 
-    // Scan .cursor/rules/*
-    const cursorRulesDir = path.join(rootDir, '.cursor', 'rules');
-    try {
-      if (fs.existsSync(cursorRulesDir)) {
-        for (const entry of fs.readdirSync(cursorRulesDir)) {
-          const full = path.join(cursorRulesDir, entry);
-          const content = readTextSafe(full);
-          if (content !== null) {
-            findings.push(...scanAgentRulesFile(content, full));
+    // Scan .cursor/rules/*, .agents/rules/*, .agents/agents/*
+    for (const relDir of [
+      path.join('.cursor', 'rules'),
+      path.join('.agents', 'rules'),
+      path.join('.agents', 'agents'),
+    ]) {
+      const dirPath = path.join(rootDir, relDir);
+      try {
+        if (fs.existsSync(dirPath)) {
+          for (const entry of fs.readdirSync(dirPath)) {
+            const full = path.join(dirPath, entry);
+            const content = readTextSafe(full);
+            if (content !== null) {
+              findings.push(...scanAgentRulesFile(content, full));
+            }
           }
         }
+      } catch {
+        // ignore unreadable rule directories
       }
-    } catch {
-      // ignore unreadable .cursor/rules
+    }
+
+    // Scan one-level <skill>/SKILL.md inside .agents/skills and .agent/skills
+    for (const relSkillsDir of [path.join('.agents', 'skills'), path.join('.agent', 'skills')]) {
+      const skillsDir = path.join(rootDir, relSkillsDir);
+      try {
+        if (fs.existsSync(skillsDir)) {
+          for (const skillEntry of fs.readdirSync(skillsDir)) {
+            const skillMd = path.join(skillsDir, skillEntry, 'SKILL.md');
+            const content = readTextSafe(skillMd);
+            if (content !== null) {
+              findings.push(...scanAgentRulesFile(content, skillMd));
+            }
+          }
+        }
+      } catch {
+        // ignore unreadable skills directories
+      }
     }
 
     // Scan .git/hooks/* (non-sample executable scripts)
@@ -208,6 +257,10 @@ export class WorkspaceSecurityScanner {
         path.join(home, '.cursor', 'mcp.json'),
         path.join(home, '.claude.json'),
         path.join(home, '.config', 'Claude', 'claude_desktop_config.json'),
+        path.join(home, '.gemini', 'config', 'mcp_config.json'),
+        path.join(home, '.gemini', 'config', 'hooks.json'),
+        path.join(home, '.gemini', 'GEMINI.md'),
+        path.join(home, '.gemini', 'antigravity-cli', 'settings.json'),
       ]) {
         const mcpFindings = this.scanSingleFile(globalMcp);
         if (mcpFindings.length > 0) {

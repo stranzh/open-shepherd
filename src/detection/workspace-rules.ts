@@ -411,7 +411,7 @@ export function scanMcpConfig(content: string, filePath: string): WorkspaceFindi
     const command = typeof cfg.command === 'string' ? cfg.command : '';
     const args = Array.isArray(cfg.args) ? cfg.args.map(String).join(' ') : '';
     const fullCmd = `${command} ${args}`.trim();
-    const url = typeof cfg.url === 'string' ? cfg.url : '';
+    const url = typeof cfg.url === 'string' ? cfg.url : typeof cfg.serverUrl === 'string' ? cfg.serverUrl : '';
 
     if (
       /\bnpx\b.*(?:-y|--yes)/i.test(fullCmd) ||
@@ -456,6 +456,113 @@ export function scanMcpConfig(content: string, filePath: string): WorkspaceFindi
       });
     }
   }
+  return findings;
+}
+
+export function scanHooksConfig(content: string, filePath: string): WorkspaceFinding[] {
+  const json = safeParseJson(content);
+  if (!json) {
+    return [];
+  }
+  const findings: WorkspaceFinding[] = [];
+  const commands: string[] = [];
+
+  const collectCommands = (node: unknown, depth = 0): void => {
+    if (!node || typeof node !== 'object' || depth > 8) {
+      return;
+    }
+    if (Array.isArray(node)) {
+      for (const item of node) {
+        collectCommands(item, depth + 1);
+      }
+      return;
+    }
+    const obj = node as Record<string, unknown>;
+    if (typeof obj.command === 'string' && obj.command.trim().length > 0) {
+      commands.push(obj.command.trim());
+    }
+    for (const val of Object.values(obj)) {
+      if (val && typeof val === 'object') {
+        collectCommands(val, depth + 1);
+      }
+    }
+  };
+
+  collectCommands(json);
+
+  const suspiciousHookRe = /(?:curl|wget|\|\s*(?:sh|bash)|nc\s+-e|base64\s+-d|powershell.*-enc)/i;
+
+  for (const cmd of commands) {
+    const matchedTaskRule = TASK_RULES.find((rule) => rule.commandPattern.test(cmd));
+    if (matchedTaskRule || suspiciousHookRe.test(cmd)) {
+      findings.push({
+        ruleId: 'agent_hook_suspicious_command',
+        ruleName: 'Suspicious Agent Lifecycle Hook Command',
+        type: WorkspaceRuleType.AGENT_RULES,
+        severity: SeverityLevel.HIGH,
+        filePath,
+        finding: cmd.slice(0, 160),
+        description: matchedTaskRule
+          ? `Agent lifecycle hook command matches "${matchedTaskRule.name}"`
+          : 'Agent lifecycle hook executes suspicious network or shell command',
+        confidence: 0.95,
+      });
+    } else {
+      findings.push({
+        ruleId: 'agent_hook_command_defined',
+        ruleName: 'Agent Lifecycle Hook Command Defined',
+        type: WorkspaceRuleType.AGENT_RULES,
+        severity: SeverityLevel.MEDIUM,
+        filePath,
+        finding: cmd.slice(0, 160),
+        description: 'Workspace or agent lifecycle hooks config defines an automatic shell hook command',
+        confidence: 0.85,
+      });
+    }
+  }
+
+  return findings;
+}
+
+export function scanAntigravityCliSettings(content: string, filePath: string): WorkspaceFinding[] {
+  const json = safeParseJson(content);
+  if (!json) {
+    return [];
+  }
+  const findings: WorkspaceFinding[] = [];
+
+  if (json.toolPermission === 'always-proceed') {
+    findings.push({
+      ruleId: 'antigravity_always_proceed',
+      ruleName: 'Antigravity Unattended Tool Execution Enabled',
+      type: WorkspaceRuleType.AGENT_RULES,
+      severity: SeverityLevel.HIGH,
+      filePath,
+      finding: 'toolPermission: always-proceed',
+      description:
+        'Antigravity CLI settings enable toolPermission "always-proceed", bypassing interactive tool approval',
+      confidence: 0.95,
+    });
+  }
+
+  const permissions = json.permissions as Record<string, unknown> | undefined;
+  const allowList = permissions && Array.isArray(permissions.allow) ? permissions.allow : [];
+  for (const entry of allowList) {
+    if (typeof entry === 'string' && /^command\(\s*\*?\s*\)$/i.test(entry.trim())) {
+      findings.push({
+        ruleId: 'antigravity_wildcard_command_allow',
+        ruleName: 'Antigravity Wildcard Command Permission',
+        type: WorkspaceRuleType.AGENT_RULES,
+        severity: SeverityLevel.HIGH,
+        filePath,
+        finding: 'permissions.allow: command(*)',
+        description: 'Antigravity settings grant unrestricted shell command execution',
+        confidence: 0.95,
+      });
+      break;
+    }
+  }
+
   return findings;
 }
 
