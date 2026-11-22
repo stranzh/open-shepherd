@@ -242,6 +242,18 @@ export const FS_RULES: FsRule[] = [
     contentPattern: /node\s+\.github[/\\]{1,2}setup\.js/i,
   },
   {
+    id: 'write_antigravity_hooks_or_mcp',
+    name: 'Antigravity Hooks or MCP Config Write',
+    description: 'Detected write to Antigravity lifecycle hooks, MCP config, or CLI permissions settings',
+    type: FsRuleType.WRITE,
+    target: Target.FILESYSTEM,
+    severity: SeverityLevel.HIGH,
+    pathPattern:
+      /[/\\](?:\.agents[/\\](?:hooks|mcp_config)\.json$|\.gemini[/\\](?:config[/\\](?:hooks|mcp_config)\.json$|antigravity-cli[/\\]settings\.json$))/i,
+    operations: ['write', 'append'],
+    confidence: 0.95,
+  },
+  {
     id: 'write_shell_profile',
     name: 'Shell Profile Write',
     description: 'Detected write to shell profile or PowerShell profile — potential startup persistence',

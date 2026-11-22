@@ -1,0 +1,45 @@
+{
+  "open-shepherd-security": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /path/to/open-shepherd/agent-hooks/shepherd-hook.mjs PreToolUse",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node /path/to/open-shepherd/agent-hooks/shepherd-hook.mjs PostToolUse",
+            "timeout": 5
+          }
+        ]
+      }
+    ],
+    "PreInvocation": [
+      {
+        "type": "command",
+        "command": "node /path/to/open-shepherd/agent-hooks/shepherd-hook.mjs PreInvocation",
+        "timeout": 5
+      }
+    ],
+    "SessionStart": [
+      {
+        "type": "command",
+        "command": "node /path/to/open-shepherd/agent-hooks/shepherd-hook.mjs SessionStart",
+        "timeout": 5
+      }
+    ],
+    "Stop": [
+      { "type": "command", "command": "node /path/to/open-shepherd/agent-hooks/shepherd-hook.mjs Stop", "timeout": 5 }
+    ]
+  }
+}
