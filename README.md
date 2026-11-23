@@ -7,7 +7,7 @@ Universal IDE & AI-agent security monitoring, adapted from [DataDog/IDE-SHEPHERD
 
 - **VS Code family** (VS Code, Cursor, Windsurf, VSCodium, Antigravity, Trae): `src/`
 - **Neovim (`>= 0.9`)**: [`neovim-plugin/lua/open_shepherd/init.lua`](neovim-plugin/lua/open_shepherd/init.lua)
-- **AI CLI agents (Claude Code, etc.)**: [`agent-hooks/shepherd-hook.mjs`](agent-hooks/shepherd-hook.mjs)
+- **AI CLI & GUI agents (Claude Code, Google Antigravity App / CLI / IDE)**: [`agent-hooks/shepherd-hook.mjs`](agent-hooks/shepherd-hook.mjs), [`agent-hooks/antigravity-proxy-guard.mjs`](agent-hooks/antigravity-proxy-guard.mjs)
 - **Universal outputs**: Local JSONL (`~/.open-shepherd/events.jsonl`) + optional HTTP Webhook (`OPEN_SHEPHERD_WEBHOOK`)
 
 For full setup, event schema, and configuration, see the **[Detailed Wiki](docs/WIKI.md)**.

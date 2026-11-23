@@ -20,7 +20,7 @@
     "url": "https://github.com/stranzh/open-shepherd"
   },
   "engines": {
-    "vscode": "^1.99.3"
+    "vscode": "^1.85.0"
   },
   "categories": [
     "Other"
