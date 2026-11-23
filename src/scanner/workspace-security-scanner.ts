@@ -268,9 +268,116 @@ export class WorkspaceSecurityScanner {
           await this.reportFindings(mcpFindings, 'User Global MCP', path.dirname(globalMcp));
         }
       }
+
+      for (const globalSkillsDir of [
+        path.join(home, '.gemini', 'config', 'skills'),
+        path.join(home, '.gemini', 'skills'),
+        path.join(home, '.gemini', 'antigravity-cli', 'skills'),
+      ]) {
+        try {
+          if (fs.existsSync(globalSkillsDir)) {
+            for (const skillEntry of fs.readdirSync(globalSkillsDir)) {
+              const skillMd = path.join(globalSkillsDir, skillEntry, 'SKILL.md');
+              const content = readTextSafe(skillMd);
+              if (content !== null) {
+                const skillFindings = scanAgentRulesFile(content, skillMd);
+                if (skillFindings.length > 0) {
+                  allFindings.push(...skillFindings);
+                  await this.reportFindings(skillFindings, 'User Global MCP', path.dirname(skillMd));
+                }
+              }
+            }
+          }
+        } catch {
+          // ignore unreadable global skills directories
+        }
+      }
+
+      for (const globalPluginsDir of [
+        path.join(home, '.gemini', 'config', 'plugins'),
+        path.join(home, '.gemini', 'antigravity-cli', 'plugins'),
+      ]) {
+        try {
+          if (fs.existsSync(globalPluginsDir)) {
+            for (const pluginEntry of fs.readdirSync(globalPluginsDir)) {
+              for (const cfgName of ['hooks.json', 'mcp_config.json']) {
+                const cfgPath = path.join(globalPluginsDir, pluginEntry, cfgName);
+                const pluginFindings = this.scanSingleFile(cfgPath);
+                if (pluginFindings.length > 0) {
+                  allFindings.push(...pluginFindings);
+                  await this.reportFindings(pluginFindings, 'User Global MCP', path.dirname(cfgPath));
+                }
+              }
+            }
+          }
+        } catch {
+          // ignore unreadable global plugins directories
+        }
+      }
+
+      const transcriptFindings = this.scanAntigravityTranscripts(home);
+      if (transcriptFindings.length > 0) {
+        allFindings.push(...transcriptFindings);
+        await this.reportFindings(transcriptFindings, 'User Global MCP', path.join(home, '.gemini'));
+      }
     }
 
     return allFindings;
+  }
+
+  scanAntigravityTranscripts(homeDir = os.homedir()): WorkspaceFinding[] {
+    const findings: WorkspaceFinding[] = [];
+    const candidates: Array<{ filePath: string; mtimeMs: number }> = [];
+
+    for (const surf of ['antigravity', 'antigravity-cli', 'antigravity-ide']) {
+      const brainDir = path.join(homeDir, '.gemini', surf, 'brain');
+      try {
+        if (!fs.existsSync(brainDir)) {
+          continue;
+        }
+        for (const convId of fs.readdirSync(brainDir)) {
+          const transcriptPath = path.join(brainDir, convId, '.system_generated', 'logs', 'transcript.jsonl');
+          try {
+            const stat = fs.statSync(transcriptPath);
+            if (stat.isFile()) {
+              candidates.push({ filePath: transcriptPath, mtimeMs: stat.mtimeMs });
+            }
+          } catch {
+            // ignore missing transcript.jsonl
+          }
+        }
+      } catch {
+        // ignore unreadable brain directory
+      }
+    }
+
+    candidates.sort((a, b) => b.mtimeMs - a.mtimeMs);
+    const dangerRe = /(?:\brm\s+-[a-z]*r[a-z]*f\s+\/|(?:curl|wget)[^\n|]*\|\s*(?:sh|bash)\b|169\.254\.169\.254)/i;
+
+    for (const item of candidates.slice(0, 5)) {
+      const content = readTextSafe(item.filePath);
+      if (content === null) {
+        continue;
+      }
+      for (const line of content.split(/\r?\n/)) {
+        if (line.includes('--dangerously-skip-permissions') || dangerRe.test(line)) {
+          findings.push({
+            ruleId: 'antigravity_transcript_unhooked_violation',
+            ruleName: 'Suspicious Activity in Antigravity Transcript',
+            type: WorkspaceRuleType.AGENT_RULES,
+            severity: SeverityLevel.HIGH,
+            filePath: item.filePath,
+            finding: 'Dangerous command or permission bypass in transcript.jsonl',
+            description:
+              'Antigravity conversation transcript recorded a dangerous command or --dangerously-skip-permissions execution',
+            confidence: 0.9,
+          });
+          break;
+        }
+      }
+    }
+
+    return findings;
   }
 
   private async reportFindings(findings: WorkspaceFinding[], wsName: string, wsPath: string): Promise<void> {
