@@ -8,6 +8,7 @@
 import { SeverityLevel } from '../lib/events/sec-events';
 import { Target } from '../lib/events/ext-events';
 import { FsOperation } from '../lib/events/fs-events';
+import { EXTRA_FS_RULES } from './fs-rules-extra';
 
 export enum FsRuleType {
   READ = 'READ',
@@ -361,6 +362,7 @@ export const FS_RULES: FsRule[] = [
     operations: ['write', 'append'],
     confidence: 0.95,
   },
+  ...EXTRA_FS_RULES,
 ];
 
 export function getRuleById(id: string): FsRule | undefined {

@@ -14,6 +14,7 @@
  */
 
 import { SeverityLevel } from '../lib/events/sec-events';
+import { EXTRA_SOURCE_RULES } from './source-rules-extra';
 
 export interface SourceRule {
   id: string;
@@ -151,6 +152,7 @@ export const SOURCE_RULES: SourceRule[] = [
       return /detached\s*:\s*true/.test(content) && /\.unref\s*\(\s*\)/.test(content);
     },
   },
+  ...EXTRA_SOURCE_RULES,
 ];
 
 export function getRuleById(id: string): SourceRule | undefined {

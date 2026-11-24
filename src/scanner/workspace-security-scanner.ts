@@ -11,6 +11,15 @@ import * as os from 'os';
 import * as path from 'path';
 import * as vscode from 'vscode';
 import {
+  McpStdioPinTracker,
+  scanClaudeSettings,
+  scanCodexTomlMcp,
+  scanCursorCliConfig,
+  scanOpenCodeConfig,
+  scanZedSettings,
+} from '../detection/ai-mcp-extra-rules';
+import { IDE_AND_AGENT_REGISTRY, detectShadowAiInPaths } from '../detection/ide-registry';
+import {
   WorkspaceFinding,
   WorkspaceRuleType,
   scanAgentRulesFile,
@@ -46,65 +55,123 @@ function readTextSafe(filePath: string): string | null {
   }
 }
 
+function endsWithPath(normPath: string, suffix: string): boolean {
+  const lower = suffix.toLowerCase();
+  return normPath === lower || normPath.endsWith(`/${lower}`);
+}
+
+function collectExistingRegistryPaths(baseDir: string, relPaths: string[]): string[] {
+  const found: string[] = [];
+  for (const rawRel of relPaths) {
+    const rel = rawRel.startsWith('~/') ? rawRel.slice(2) : rawRel;
+    const candidate = path.join(baseDir, rel);
+    try {
+      if (fs.existsSync(candidate)) {
+        found.push(candidate);
+      }
+    } catch {
+      // ignore inaccessible registry paths
+    }
+  }
+  return found;
+}
+
 const CONFIG_SCANNERS: Array<{
   relPath?: string;
   match: (normPath: string) => boolean;
   scan: (content: string, filePath: string) => WorkspaceFinding[];
 }> = [
-  { relPath: '.vscode/settings.json', match: (p) => p.endsWith('/.vscode/settings.json'), scan: scanVscodeSettings },
-  { relPath: '.vscode/tasks.json', match: (p) => p.endsWith('/.vscode/tasks.json'), scan: scanVscodeTasksJson },
-  { relPath: '.vscode/launch.json', match: (p) => p.endsWith('/.vscode/launch.json'), scan: scanVscodeLaunchJson },
-  { relPath: '.git/config', match: (p) => p.endsWith('/.git/config'), scan: scanGitConfig },
+  {
+    relPath: '.vscode/settings.json',
+    match: (p) => endsWithPath(p, '.vscode/settings.json'),
+    scan: scanVscodeSettings,
+  },
+  { relPath: '.vscode/tasks.json', match: (p) => endsWithPath(p, '.vscode/tasks.json'), scan: scanVscodeTasksJson },
+  { relPath: '.vscode/launch.json', match: (p) => endsWithPath(p, '.vscode/launch.json'), scan: scanVscodeLaunchJson },
+  { relPath: '.git/config', match: (p) => endsWithPath(p, '.git/config'), scan: scanGitConfig },
   {
     relPath: '.devcontainer/devcontainer.json',
-    match: (p) => p.endsWith('/devcontainer.json'),
+    match: (p) => endsWithPath(p, 'devcontainer.json'),
     scan: scanDevcontainerJson,
   },
-  { relPath: 'package.json', match: (p) => p.endsWith('/package.json'), scan: scanPackageManifest },
-  { relPath: '.npmrc', match: (p) => p.endsWith('/.npmrc') || p.endsWith('/pip.conf'), scan: scanPackageManagerConfig },
-  { relPath: 'pip.conf', match: () => false, scan: scanPackageManagerConfig },
-  { relPath: '.vscode/mcp.json', match: (p) => p.endsWith('/.vscode/mcp.json'), scan: scanMcpConfig },
+  { relPath: 'package.json', match: (p) => endsWithPath(p, 'package.json'), scan: scanPackageManifest },
+  { relPath: '.npmrc', match: (p) => endsWithPath(p, '.npmrc'), scan: scanPackageManagerConfig },
+  { relPath: 'pip.conf', match: (p) => endsWithPath(p, 'pip.conf'), scan: scanPackageManagerConfig },
+  { relPath: '.vscode/mcp.json', match: (p) => endsWithPath(p, '.vscode/mcp.json'), scan: scanMcpConfig },
+  { relPath: '.cursor/mcp.json', match: (p) => endsWithPath(p, '.cursor/mcp.json'), scan: scanMcpConfig },
+  { relPath: '.kiro/settings/mcp.json', match: (p) => endsWithPath(p, '.kiro/settings/mcp.json'), scan: scanMcpConfig },
+  { relPath: '.agents/mcp_config.json', match: (p) => endsWithPath(p, '.agents/mcp_config.json'), scan: scanMcpConfig },
   {
-    relPath: '.mcp.json',
-    match: (p) => p.endsWith('/.mcp.json') || p.endsWith('/mcp.json') || p.endsWith('/mcp_config.json'),
+    relPath: '.antigravity-plugin/mcp_config.json',
+    match: (p) => endsWithPath(p, '.antigravity-plugin/mcp_config.json'),
     scan: scanMcpConfig,
   },
-  { relPath: '.agents/mcp_config.json', match: () => false, scan: scanMcpConfig },
-  { relPath: 'mcp_config.json', match: () => false, scan: scanMcpConfig },
-  { relPath: '.antigravity-plugin/mcp_config.json', match: () => false, scan: scanMcpConfig },
-  { relPath: '.cursor/mcp.json', match: (p) => p.endsWith('/.cursor/mcp.json'), scan: scanMcpConfig },
-  { match: (p) => p.endsWith('/.claude.json') || p.endsWith('/claude_desktop_config.json'), scan: scanMcpConfig },
+  { relPath: 'mcp_config.json', match: (p) => endsWithPath(p, 'mcp_config.json'), scan: scanMcpConfig },
+  {
+    relPath: '.mcp.json',
+    match: (p) => endsWithPath(p, '.mcp.json') || endsWithPath(p, 'mcp.json') || endsWithPath(p, 'mcp-config.json'),
+    scan: scanMcpConfig,
+  },
+  {
+    match: (p) => endsWithPath(p, '.claude.json') || endsWithPath(p, 'claude_desktop_config.json'),
+    scan: scanMcpConfig,
+  },
+  {
+    relPath: '.claude/settings.json',
+    match: (p) => endsWithPath(p, '.claude/settings.json'),
+    scan: scanClaudeSettings,
+  },
+  {
+    relPath: '.claude/settings.local.json',
+    match: (p) => endsWithPath(p, '.claude/settings.local.json'),
+    scan: scanClaudeSettings,
+  },
+  { relPath: '.cursor/cli.json', match: (p) => endsWithPath(p, '.cursor/cli.json'), scan: scanCursorCliConfig },
+  { relPath: '.codex/config.toml', match: (p) => endsWithPath(p, '.codex/config.toml'), scan: scanCodexTomlMcp },
+  {
+    relPath: '.zed/settings.json',
+    match: (p) => endsWithPath(p, '.zed/settings.json') || endsWithPath(p, 'zed/settings.json'),
+    scan: scanZedSettings,
+  },
+  { relPath: 'opencode.json', match: (p) => endsWithPath(p, 'opencode.json'), scan: scanOpenCodeConfig },
+  {
+    relPath: '.opencode/config.json',
+    match: (p) => endsWithPath(p, '.opencode/config.json'),
+    scan: scanOpenCodeConfig,
+  },
   {
     relPath: '.agents/hooks.json',
-    match: (p) => p.endsWith('/.agents/hooks.json') || p.endsWith('/hooks.json'),
+    match: (p) => endsWithPath(p, '.agents/hooks.json') || endsWithPath(p, 'hooks.json'),
     scan: scanHooksConfig,
   },
-  { relPath: '.cursorrules', match: (p) => p.endsWith('/.cursorrules'), scan: scanAgentRulesFile },
+  { relPath: '.cursorrules', match: (p) => endsWithPath(p, '.cursorrules'), scan: scanAgentRulesFile },
   { match: (p) => p.includes('/.cursor/rules/'), scan: scanAgentRulesFile },
-  { relPath: 'CLAUDE.md', match: (p) => p.endsWith('/claude.md'), scan: scanAgentRulesFile },
-  { relPath: 'AGENTS.md', match: (p) => p.endsWith('/agents.md'), scan: scanAgentRulesFile },
-  { relPath: 'GEMINI.md', match: (p) => p.endsWith('/gemini.md'), scan: scanAgentRulesFile },
+  { relPath: 'CLAUDE.md', match: (p) => endsWithPath(p, 'claude.md'), scan: scanAgentRulesFile },
+  { relPath: 'AGENTS.md', match: (p) => endsWithPath(p, 'agents.md'), scan: scanAgentRulesFile },
+  { relPath: 'AGENTS.override.md', match: (p) => endsWithPath(p, 'agents.override.md'), scan: scanAgentRulesFile },
+  { relPath: 'GEMINI.md', match: (p) => endsWithPath(p, 'gemini.md'), scan: scanAgentRulesFile },
   {
     match: (p) =>
       p.includes('/.agents/rules/') ||
       p.includes('/.agents/agents/') ||
       p.includes('/.agents/skills/') ||
       p.includes('/.agent/skills/') ||
-      p.endsWith('/skill.md'),
+      endsWithPath(p, 'skill.md'),
     scan: scanAgentRulesFile,
   },
   {
     relPath: '.github/copilot-instructions.md',
-    match: (p) => p.endsWith('/copilot-instructions.md'),
+    match: (p) => endsWithPath(p, 'copilot-instructions.md'),
     scan: scanAgentRulesFile,
   },
-  { relPath: '.windsurfrules', match: (p) => p.endsWith('/.windsurfrules'), scan: scanAgentRulesFile },
-  { relPath: '.clinerules', match: (p) => p.endsWith('/.clinerules'), scan: scanAgentRulesFile },
-  { match: (p) => p.endsWith('/antigravity-cli/settings.json'), scan: scanAntigravityCliSettings },
+  { relPath: '.windsurfrules', match: (p) => endsWithPath(p, '.windsurfrules'), scan: scanAgentRulesFile },
+  { relPath: '.clinerules', match: (p) => endsWithPath(p, '.clinerules'), scan: scanAgentRulesFile },
+  { match: (p) => endsWithPath(p, 'antigravity-cli/settings.json'), scan: scanAntigravityCliSettings },
 ];
 
 export class WorkspaceSecurityScanner {
   private static _instance: WorkspaceSecurityScanner;
+  private readonly mcpPinTracker = new McpStdioPinTracker();
 
   private constructor() {}
 
@@ -129,9 +196,9 @@ export class WorkspaceSecurityScanner {
       vscode.workspace.onDidSaveTextDocument((doc) => {
         const fsPath = doc.uri.fsPath;
         if (this.isWatchedConfigPath(fsPath)) {
-          const findings = this.scanSingleFile(fsPath);
+          const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
+          const findings = this.scanSingleFile(fsPath, folder?.uri.fsPath);
           if (findings.length > 0) {
-            const folder = vscode.workspace.getWorkspaceFolder(doc.uri);
             const wsName = folder?.name || 'Workspace';
             const wsPath = folder?.uri.fsPath || path.dirname(fsPath);
             this.reportFindings(findings, wsName, wsPath).catch(() => {});
@@ -146,23 +213,38 @@ export class WorkspaceSecurityScanner {
     return CONFIG_SCANNERS.some((entry) => entry.match(norm));
   }
 
-  scanSingleFile(filePath: string): WorkspaceFinding[] {
+  scanSingleFile(filePath: string, baseDir?: string): WorkspaceFinding[] {
     const content = readTextSafe(filePath);
     if (content === null) {
       return [];
     }
     const norm = filePath.replace(/\\/g, '/').toLowerCase();
     const entry = CONFIG_SCANNERS.find((item) => item.match(norm));
-    return entry ? entry.scan(content, filePath) : [];
+    if (!entry) {
+      return [];
+    }
+    const findings = entry.scan(content, filePath);
+    if (entry.scan === scanMcpConfig || entry.scan === scanZedSettings || entry.scan === scanOpenCodeConfig) {
+      findings.push(...this.mcpPinTracker.checkMcpConfig(content, filePath, baseDir));
+    } else if (entry.scan === scanCodexTomlMcp) {
+      findings.push(...this.mcpPinTracker.checkTomlMcpServers(content, filePath, baseDir));
+    }
+    return findings;
   }
 
   scanDirectory(rootDir: string): WorkspaceFinding[] {
     const findings: WorkspaceFinding[] = [];
     for (const entry of CONFIG_SCANNERS) {
       if (entry.relPath) {
-        findings.push(...this.scanSingleFile(path.join(rootDir, entry.relPath)));
+        findings.push(...this.scanSingleFile(path.join(rootDir, entry.relPath), rootDir));
       }
     }
+
+    const existingWorkspacePaths = collectExistingRegistryPaths(
+      rootDir,
+      IDE_AND_AGENT_REGISTRY.flatMap((ideEntry) => ideEntry.workspacePaths),
+    );
+    findings.push(...detectShadowAiInPaths(existingWorkspacePaths, undefined, rootDir));
 
     // Scan .cursor/rules/*, .agents/rules/*, .agents/agents/*
     for (const relDir of [
@@ -256,7 +338,16 @@ export class WorkspaceSecurityScanner {
       for (const globalMcp of [
         path.join(home, '.cursor', 'mcp.json'),
         path.join(home, '.claude.json'),
+        path.join(home, '.claude', 'settings.json'),
+        path.join(home, '.claude', 'settings.local.json'),
         path.join(home, '.config', 'Claude', 'claude_desktop_config.json'),
+        path.join(home, '.codeium', 'windsurf', 'mcp_config.json'),
+        path.join(home, '.config', 'devin', 'mcp.json'),
+        path.join(home, '.kiro', 'settings', 'mcp.json'),
+        path.join(home, '.codex', 'config.toml'),
+        path.join(home, '.config', 'opencode', 'opencode.json'),
+        path.join(home, '.copilot', 'mcp-config.json'),
+        path.join(home, '.config', 'zed', 'settings.json'),
         path.join(home, '.gemini', 'config', 'mcp_config.json'),
         path.join(home, '.gemini', 'config', 'hooks.json'),
         path.join(home, '.gemini', 'GEMINI.md'),
@@ -267,6 +358,16 @@ export class WorkspaceSecurityScanner {
           allFindings.push(...mcpFindings);
           await this.reportFindings(mcpFindings, 'User Global MCP', path.dirname(globalMcp));
         }
+      }
+
+      const existingHomePaths = collectExistingRegistryPaths(
+        home,
+        IDE_AND_AGENT_REGISTRY.flatMap((ideEntry) => ideEntry.homePaths),
+      );
+      const shadowFindings = detectShadowAiInPaths(existingHomePaths, undefined, home);
+      if (shadowFindings.length > 0) {
+        allFindings.push(...shadowFindings);
+        await this.reportFindings(shadowFindings, 'User Global MCP', home);
       }
 
       for (const globalSkillsDir of [

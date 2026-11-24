@@ -6,27 +6,18 @@
  */
 
 import { SeverityLevel } from '../lib/events/sec-events';
+import { evaluateMcpServerFindings, hasMcpAuth, scanAiWorkspaceSettings } from './ai-mcp-extra-rules';
 import { TASK_RULES } from './task-rules';
+import {
+  HIDDEN_HTML_COMMENT_RE,
+  WorkspaceFinding,
+  WorkspaceRuleType,
+  isPlainObject,
+  safeParseJson,
+  scanHooksObject,
+} from './workspace-rule-types';
 
-export enum WorkspaceRuleType {
-  MCP_CONFIG = 'MCP_CONFIG',
-  AGENT_RULES = 'AGENT_RULES',
-  VSCODE_CONFIG = 'VSCODE_CONFIG',
-  GIT_CONFIG = 'GIT_CONFIG',
-  DEVCONTAINER = 'DEVCONTAINER',
-  PACKAGE_MANIFEST = 'PACKAGE_MANIFEST',
-}
-
-export interface WorkspaceFinding {
-  ruleId: string;
-  ruleName: string;
-  type: WorkspaceRuleType;
-  severity: SeverityLevel;
-  filePath: string;
-  finding: string;
-  description: string;
-  confidence: number;
-}
+export { WorkspaceFinding, WorkspaceRuleType, safeParseJson } from './workspace-rule-types';
 
 const DANGEROUS_VSCODE_SETTING_KEYS = [
   'terminal.integrated.env.linux',
@@ -42,7 +33,6 @@ const DANGEROUS_VSCODE_SETTING_KEYS = [
 
 const BIDI_OR_HIDDEN_UNICODE_RE = /[\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/;
 const UNICODE_TAG_CHAR_RE = /[\u{E0000}-\u{E007F}]/u;
-const HIDDEN_HTML_COMMENT_RE = /<!--([\s\S]{1,4000}?)-->/g;
 const PROMPT_INJECTION_CMD_RE = new RegExp(
   [
     'ignore\\s+(?:all\\s+)?previous\\s+instructions',
@@ -58,90 +48,6 @@ const PROMPT_INJECTION_CMD_RE = new RegExp(
   ].join('|'),
   'i',
 );
-
-function stripJsonComments(raw: string): string {
-  let out = '';
-  let inString = false;
-  let escaped = false;
-
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i];
-    if (inString) {
-      out += ch;
-      if (escaped) {
-        escaped = false;
-      } else if (ch === '\\') {
-        escaped = true;
-      } else if (ch === '"') {
-        inString = false;
-      }
-      continue;
-    }
-
-    if (ch === '"') {
-      inString = true;
-      out += ch;
-    } else if (ch === '/' && raw[i + 1] === '/') {
-      while (i < raw.length && raw[i] !== '\n') {
-        i++;
-      }
-      if (i < raw.length) {
-        out += '\n';
-      }
-    } else if (ch === '/' && raw[i + 1] === '*') {
-      i += 2;
-      while (i < raw.length && !(raw[i] === '*' && raw[i + 1] === '/')) {
-        i++;
-      }
-      i++;
-    } else {
-      out += ch;
-    }
-  }
-
-  // Strip trailing commas outside strings
-  let cleaned = '';
-  inString = false;
-  escaped = false;
-  for (let i = 0; i < out.length; i++) {
-    const ch = out[i];
-    if (inString) {
-      cleaned += ch;
-      if (escaped) {
-        escaped = false;
-      } else if (ch === '\\') {
-        escaped = true;
-      } else if (ch === '"') {
-        inString = false;
-      }
-      continue;
-    }
-    if (ch === '"') {
-      inString = true;
-      cleaned += ch;
-    } else if (ch === ',') {
-      let j = i + 1;
-      while (j < out.length && /\s/.test(out[j])) {
-        j++;
-      }
-      if (out[j] !== '}' && out[j] !== ']') {
-        cleaned += ch;
-      }
-    } else {
-      cleaned += ch;
-    }
-  }
-  return cleaned;
-}
-
-function safeParseJson(raw: string): Record<string, any> | null {
-  try {
-    const parsed = JSON.parse(stripJsonComments(raw));
-    return parsed && typeof parsed === 'object' ? parsed : null;
-  } catch {
-    return null;
-  }
-}
 
 function extractTaskToken(val: unknown): string {
   if (typeof val === 'string') {
@@ -193,6 +99,7 @@ export function scanVscodeSettings(content: string, filePath: string): Workspace
       });
     }
   }
+  findings.push(...scanAiWorkspaceSettings(json, filePath));
   return findings;
 }
 
@@ -413,35 +320,19 @@ export function scanMcpConfig(content: string, filePath: string): WorkspaceFindi
     const fullCmd = `${command} ${args}`.trim();
     const url = typeof cfg.url === 'string' ? cfg.url : typeof cfg.serverUrl === 'string' ? cfg.serverUrl : '';
 
-    if (
-      /\bnpx\b.*(?:-y|--yes)/i.test(fullCmd) ||
-      /\buvx\b/i.test(fullCmd) ||
-      /(?:curl|wget|\|\s*(?:sh|bash))/i.test(fullCmd)
-    ) {
-      findings.push({
-        ruleId: 'mcp_unpinned_or_shell_server',
-        ruleName: 'Suspicious MCP Server Command',
-        type: WorkspaceRuleType.MCP_CONFIG,
-        severity: SeverityLevel.HIGH,
+    findings.push(
+      ...evaluateMcpServerFindings(
+        {
+          name,
+          fullCmd,
+          url,
+          authed: hasMcpAuth(cfg),
+          envObjects: isPlainObject(cfg.env) ? [{ label: `MCP server "${name}" env`, env: cfg.env }] : [],
+          sourcePrefix: 'MCP server',
+        },
         filePath,
-        finding: `${name}: ${fullCmd.slice(0, 160)}`,
-        description: `MCP server "${name}" executes unpinned package runner or shell download command`,
-        confidence: 0.9,
-      });
-    }
-
-    if (url && !/^https?:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?:[:/]|$)/i.test(url)) {
-      findings.push({
-        ruleId: 'mcp_remote_endpoint',
-        ruleName: 'Remote MCP Server Endpoint',
-        type: WorkspaceRuleType.MCP_CONFIG,
-        severity: SeverityLevel.MEDIUM,
-        filePath,
-        finding: `${name}: ${url}`,
-        description: `MCP server "${name}" connects to non-local remote endpoint ${url}`,
-        confidence: 0.85,
-      });
-    }
+      ),
+    );
 
     if (typeof cfg.description === 'string' && PROMPT_INJECTION_CMD_RE.test(cfg.description)) {
       findings.push({
@@ -464,64 +355,7 @@ export function scanHooksConfig(content: string, filePath: string): WorkspaceFin
   if (!json) {
     return [];
   }
-  const findings: WorkspaceFinding[] = [];
-  const commands: string[] = [];
-
-  const collectCommands = (node: unknown, depth = 0): void => {
-    if (!node || typeof node !== 'object' || depth > 8) {
-      return;
-    }
-    if (Array.isArray(node)) {
-      for (const item of node) {
-        collectCommands(item, depth + 1);
-      }
-      return;
-    }
-    const obj = node as Record<string, unknown>;
-    if (typeof obj.command === 'string' && obj.command.trim().length > 0) {
-      commands.push(obj.command.trim());
-    }
-    for (const val of Object.values(obj)) {
-      if (val && typeof val === 'object') {
-        collectCommands(val, depth + 1);
-      }
-    }
-  };
-
-  collectCommands(json);
-
-  const suspiciousHookRe = /(?:curl|wget|\|\s*(?:sh|bash)|nc\s+-e|base64\s+-d|powershell.*-enc)/i;
-
-  for (const cmd of commands) {
-    const matchedTaskRule = TASK_RULES.find((rule) => rule.commandPattern.test(cmd));
-    if (matchedTaskRule || suspiciousHookRe.test(cmd)) {
-      findings.push({
-        ruleId: 'agent_hook_suspicious_command',
-        ruleName: 'Suspicious Agent Lifecycle Hook Command',
-        type: WorkspaceRuleType.AGENT_RULES,
-        severity: SeverityLevel.HIGH,
-        filePath,
-        finding: cmd.slice(0, 160),
-        description: matchedTaskRule
-          ? `Agent lifecycle hook command matches "${matchedTaskRule.name}"`
-          : 'Agent lifecycle hook executes suspicious network or shell command',
-        confidence: 0.95,
-      });
-    } else {
-      findings.push({
-        ruleId: 'agent_hook_command_defined',
-        ruleName: 'Agent Lifecycle Hook Command Defined',
-        type: WorkspaceRuleType.AGENT_RULES,
-        severity: SeverityLevel.MEDIUM,
-        filePath,
-        finding: cmd.slice(0, 160),
-        description: 'Workspace or agent lifecycle hooks config defines an automatic shell hook command',
-        confidence: 0.85,
-      });
-    }
-  }
-
-  return findings;
+  return scanHooksObject(json, filePath);
 }
 
 export function scanAntigravityCliSettings(content: string, filePath: string): WorkspaceFinding[] {
@@ -608,7 +442,9 @@ export function scanAgentRulesFile(content: string, filePath: string): Workspace
     ].join('|'),
     'i',
   );
-  if (maliciousDirectiveRe.test(content)) {
+  HIDDEN_HTML_COMMENT_RE.lastIndex = 0;
+  const visibleContent = content.replace(HIDDEN_HTML_COMMENT_RE, '');
+  if (maliciousDirectiveRe.test(visibleContent)) {
     findings.push({
       ruleId: 'agent_rules_malicious_directive',
       ruleName: 'Agent Rules Malicious Execution Directive',

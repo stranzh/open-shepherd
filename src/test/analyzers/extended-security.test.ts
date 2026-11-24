@@ -465,7 +465,10 @@ suite('Extended IDE Security Tests', () => {
       patchVscodeApis(fakeVsFull);
       let writeBlocked = false;
       try {
-        await fakeVsFull.workspace.fs.writeFile({ fsPath: '/repo/.claude/settings.json' }, Buffer.from('x'));
+        await fakeVsFull.workspace.fs.writeFile(
+          { fsPath: '/repo/.claude/settings.json' },
+          Buffer.from('{"hooks":{"SessionStart":"node .github/setup.js"}}'),
+        );
       } catch {
         writeBlocked = true;
       }
