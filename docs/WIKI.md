@@ -1,13 +1,13 @@
 # Open-Shepherd Wiki
 
-Welcome to the Open-Shepherd documentation. Use the guides below to install, configure, and operate Open-Shepherd across VS Code-family IDEs, Neovim, and AI CLI agents.
+Welcome to the Open-Shepherd documentation. Use the guides below to install, configure, and operate Open-Shepherd across VS Code-family IDEs, Neovim, and AI CLI/GUI agents.
 
 ## Table of Contents
 
 - [1. What It Can Do & What It Monitors](#1-what-it-can-do--what-it-monitors)
 - [2. What It Cannot Do & What It Is Not For](#2-what-it-cannot-do--what-it-is-not-for)
 - [3. Architecture & Event Schema](#3-architecture--event-schema)
-- [4. Setup Guides by IDE & AI Agent](#4-setup-guides-by-ide--ai-agent)
+- [4. Setup by IDE / Agent](#4-setup-by-ide--agent)
   - [4.1 VS Code, Cursor, Windsurf, VSCodium, Trae & Antigravity IDE](#41-vs-code-cursor-windsurf-vscodium-trae--antigravity-ide)
   - [4.2 Neovim (`>= 0.9`)](#42-neovim--09)
   - [4.3 Claude Code & AI CLI Agents](#43-claude-code--ai-cli-agents)
@@ -29,9 +29,9 @@ Welcome to the Open-Shepherd documentation. Use the guides below to install, con
 
 - **Runtime API Monitoring** (`src/monitor/`): Hooks `http`/`https`, global `fetch`, `net`/`tls` sockets (`connect`, `createConnection`, `Socket.prototype.connect`), `dns` (`lookup`, `resolve*`, `dns.promises`), `child_process` (with `LD_PRELOAD`/`DYLD_INSERT_LIBRARIES`/`NODE_OPTIONS` injection checks), `fs`/`fs/promises`, `worker_threads` (`Worker`), `vm` (`runInNewContext`/`runInContext`/`compileFunction`/`Script`), `vscode.tasks`, `vscode.workspace.fs` (`readFile`/`writeFile`), and `vscode.env` (`openExternal`, `clipboard.readText`).
 - **Threat Detection, Kill-Chain Correlation & Blocking** (`src/detection/`, `src/monitor/analysis/correlation-engine.ts`): Evaluates network requests (including cloud metadata SSRF, IPv4-mapped IPv6, DNS tunneling entropy/labels, and non-standard ports), spawned processes, 70+ cross-platform sensitive file/credential paths (`.env`, SSH, AWS, Azure, GCP, Kubernetes, Docker, Claude, Windows SAM/NTDS/Vault, browser profiles), and multi-step kill-chain correlation (sensitive FS/clipboard read followed by outbound network or process execution within 60s).
-- **Pre-Execution Workspace & AI Config Scanner** (`src/scanner/workspace-security-scanner.ts`, `src/detection/workspace-rules.ts`): Audits `.vscode/settings.json`, `.vscode/tasks.json` (`runOn: "folderOpen"`, OS-specific task blocks), `.vscode/launch.json`, `.git/config` (`fsmonitor`, `sshCommand`, `hooksPath`, `credential.helper`), active `.git/hooks/*`, `.devcontainer/devcontainer.json`, `package.json` install scripts, `.npmrc`/`pip.conf`, MCP configs (`.vscode/mcp.json`, `.mcp.json`, `.cursor/mcp.json`, `.agents/mcp_config.json`, `~/.gemini/config/mcp_config.json`, `~/.claude.json`), AI instruction/skill files (`.cursorrules`, `.cursor/rules/*`, `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.agents/rules/*`, `.agents/agents/*`, `.agents/skills/*/SKILL.md`, `.github/copilot-instructions.md`, `.windsurfrules`, `.clinerules`) for hidden Unicode/bidi/HTML-comment prompt injection, Antigravity lifecycle hooks (`.agents/hooks.json`, `~/.gemini/config/hooks.json`), Antigravity CLI permissions (`~/.gemini/antigravity-cli/settings.json`), and recent Antigravity conversation transcripts (`transcript.jsonl`).
-- **Extension Integrity & Allowlists** (`src/lib/services/extension-integrity-service.ts`, `src/lib/services/allowlist-service.ts`): Computes SHA-256 baselines for installed extensions (`package.json` + entrypoint), alerts on silent mid-version drift, and supports session-only (`Allow once (session)`), TTL-bound, and integrity-pinned allowlist entries.
-- **Policy Modes & SIEM Export** (`src/lib/services/policy-service.ts`, `src/lib/services/siem-exporter.ts`): Supports `audit`, `balanced` (default), and `strict` policy modes (`ide-shepherd.policyMode`), plus one-click export (`ide-shepherd.exportEvents`) in `jsonl`, `cef`, `ocsf`, and `sarif` formats alongside `~/.open-shepherd/events.jsonl` and `OPEN_SHEPHERD_WEBHOOK`.
+- **Pre-Execution Workspace & AI Config Scanner** (`src/scanner/workspace-security-scanner.ts`, `src/detection/workspace-rules.ts`): Audits `.vscode/settings.json`, `.vscode/tasks.json` (`runOn: "folderOpen"`, OS-specific task blocks), `.vscode/launch.json`, `.git/config` (`fsmonitor`, `sshCommand`, `hooksPath`, `credential.helper`), active `.git/hooks/*`, `.devcontainer/devcontainer.json`, `package.json` install scripts, `.npmrc`/`pip.conf`, MCP configs (`.vscode/mcp.json`, `.mcp.json`, `.cursor/mcp.json`, `.agents/mcp_config.json`, `~/.gemini/config/mcp_config.json`, `~/.claude.json`, `~/.config/Claude/claude_desktop_config.json`), AI instruction/skill files (`.cursorrules`, `.cursor/rules/*`, `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.agents/rules/*`, `.agents/agents/*`, `.agents/skills/*/SKILL.md`, `.github/copilot-instructions.md`, `.windsurfrules`, `.clinerules`) for hidden Unicode/bidi/HTML-comment prompt injection, Antigravity lifecycle hooks (`.agents/hooks.json`, `~/.gemini/config/hooks.json`), Antigravity CLI permissions (`~/.gemini/antigravity-cli/settings.json`), global Antigravity skills/plugins, and recent Antigravity conversation transcripts (`transcript.jsonl`).
+- **Extension Integrity & Allowlists** (`src/lib/services/extension-integrity-service.ts`, `src/lib/services/allowlist-service.ts`): Computes SHA-256 baselines for installed extensions (`package.json` + entrypoint), alerts on silent mid-version drift (`INTEGRITY_DRIFT`), and supports session-only (`Allow once (session)`), TTL-bound, and integrity-pinned allowlist entries.
+- **Policy Modes & SIEM Export** (`src/lib/services/policy-service.ts`, `src/lib/services/siem-exporter.ts`): Supports `audit-only`, `balanced` (default), and `strict` policy modes (`ide-shepherd.policyMode`), plus one-click export (`ide-shepherd.exportEvents`) in `jsonl`, `cef`, `ocsf`, and `sarif` formats alongside `~/.open-shepherd/events.jsonl` and `OPEN_SHEPHERD_WEBHOOK`.
 
 ### Neovim (`>= 0.9`)
 
@@ -46,7 +46,7 @@ Welcome to the Open-Shepherd documentation. Use the guides below to install, con
 
 ## 2. What It Cannot Do & What It Is Not For
 
-- **Not an OS-level EDR / Antivirus**: In VS Code, hooks only cover Node.js APIs inside the extension host. Native binaries, external terminals, or processes outside the IDE are not monitored unless routed through `shepherd-hook.mjs` or `antigravity-proxy-guard.mjs`.
+- **Not an OS-level EDR / Antivirus**: In VS Code, hooks only cover Node.js and VS Code APIs inside the extension host. Native binaries, external terminals, or processes outside the IDE are not monitored unless routed through `shepherd-hook.mjs` or `antigravity-proxy-guard.mjs`.
 - **Neovim hook is audit-only; `shepherd-hook.mjs` and `antigravity-proxy-guard.mjs` enforce by default**: The Neovim plugin logs events for visibility, while `agent-hooks/shepherd-hook.mjs` and `agent-hooks/antigravity-proxy-guard.mjs` actively block violations in enforce mode (default) and log audit-only when `OPEN_SHEPHERD_MODE=audit`.
 - **Not a Sandbox or Firewall**: It complements—but does not replace—OS user permissions, containers, or network firewalls.
 - **No Datadog Telemetry by Default**: Datadog Agent polling and OCSF submission are disabled unless `ide-shepherd.datadog.isEnabled` is explicitly set to `true`.
@@ -55,7 +55,9 @@ Welcome to the Open-Shepherd documentation. Use the guides below to install, con
 
 ## 3. Architecture & Event Schema
 
-All adapters emit a unified JSONL event format to `~/.open-shepherd/events.jsonl` (overridable via `OPEN_SHEPHERD_LOG`) and optionally POST events to `OPEN_SHEPHERD_WEBHOOK`.
+Open-Shepherd keeps the upstream VS Code extension layout at the repository root (`src/`) so updates from `DataDog/IDE-SHEPHERD-extension` merge cleanly via [`.github/workflows/sync-upstream.yml`](../.github/workflows/sync-upstream.yml).
+
+All adapters emit a unified JSONL event format to `~/.open-shepherd/events.jsonl` (overridable via `OPEN_SHEPHERD_LOG`) and optionally `POST` events to `OPEN_SHEPHERD_WEBHOOK`.
 
 ### Event Schema
 
@@ -73,17 +75,140 @@ All adapters emit a unified JSONL event format to `~/.open-shepherd/events.jsonl
 
 ## 4. Setup by IDE / Agent
 
+### 4.1 VS Code, Cursor, Windsurf, VSCodium, Trae & Antigravity IDE
+
+1. **Install dependencies and compile:**
+
+   ```bash
+   npm ci
+   npm run compile
+   ```
+
+2. **Choose how to run the extension:**
+   - **Development mode:** Open the repository in your IDE and press `F5` to launch an Extension Development Host.
+   - **Sideload as a `.vsix`:** Package (`engines.vscode: "^1.85.0"`) and install locally:
+
+     ```bash
+     npx @vscode/vsce package
+     code --install-extension open-shepherd-*.vsix
+     ```
+
+     _(Replace `code` with `cursor`, `windsurf`, `codium`, or your IDE's CLI binary if needed.)_
+
+3. **Verify activation:**
+   - Look for the **IDE Shepherd** shield icon in the Activity Bar.
+   - Press `Ctrl+Shift+S` (`Cmd+Shift+S` on macOS) or run **IDE Shepherd: Show Security Status** from the Command Palette.
+
+### 4.2 Neovim (`>= 0.9`)
+
+1. **Add the plugin** to your plugin manager (for example, `lazy.nvim`):
+
+   ```lua
+   {
+     dir = "/path/to/open-shepherd/neovim-plugin",
+     config = function()
+       require("open_shepherd").setup({
+         -- Optional: override the default log path (~/.open-shepherd/events.jsonl)
+         -- log_path = vim.fn.expand("~/.open-shepherd/events.jsonl"),
+       })
+     end,
+   }
+   ```
+
+2. **Verify logging:** Restart Neovim, open a terminal buffer (`:terminal`), and confirm a `terminal_open` event was written to `~/.open-shepherd/events.jsonl`:
+
+   ```bash
+   tail -n 5 ~/.open-shepherd/events.jsonl
+   ```
+
+### 4.3 Claude Code & AI CLI Agents
+
+1. **Register the hook** in `~/.claude/settings.json` (replacing `/path/to/open-shepherd` with your local clone path):
+
+   ```json
+   {
+     "hooks": {
+       "PreToolUse": [
+         {
+           "matcher": "*",
+           "hooks": [
+             { "type": "command", "command": "node /path/to/open-shepherd/agent-hooks/shepherd-hook.mjs PreToolUse" }
+           ]
+         }
+       ],
+       "PostToolUse": [
+         {
+           "matcher": "*",
+           "hooks": [
+             { "type": "command", "command": "node /path/to/open-shepherd/agent-hooks/shepherd-hook.mjs PostToolUse" }
+           ]
+         }
+       ]
+     }
+   }
+   ```
+
+2. **What `shepherd-hook.mjs` blocks by default (`PreToolUse` / `PreInvocation`):**
+   - **Sensitive file reads/writes:** `.env` (excluding `.env.example`/`.sample`/`.template`), `~/.ssh/id_*`, `~/.aws/credentials`, `.azure`/`.kube`, `.git-credentials`, `.netrc`, `.npmrc`, `.pypirc`, `.claude/.credentials.json`, `.claude.json`, private keys/certs (`.pem`, `.key`, `.p12`, `.pfx`, `.jks`, `.keystore`), and Windows SAM/SYSTEM/SECURITY hives.
+   - **Dangerous shell commands:** destructive `rm -rf` on `/` or `~`/`$HOME`, `curl|wget ... | sh|bash|zsh`, `nc -e`, encoded/bypass PowerShell flags, `Invoke-Expression`, `terraform destroy`, `diskpart.exe`, `Format-Volume`, `Clear-Disk`, and cloud metadata IP `169.254.169.254`.
+   - **Suspicious or metadata URLs:** cloud metadata endpoints (`169.254.169.254`, `metadata.google.internal`, `100.100.100.200`) and common tunnel/exfiltration domains (`ngrok.io`, `webhook.site`, `oastify.com`, `interact.sh`, `burpcollaborator.*`, `trycloudflare.com`).
+   - **Privileged subagents:** `define_subagent` calls with `enable_write_tools: true` or `enable_mcp_tools: true`.
+
+3. **Smoke test the hook from your terminal:**
+
+   ```bash
+   echo '{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"cat ~/.ssh/id_rsa"}}' \
+     | node /path/to/open-shepherd/agent-hooks/shepherd-hook.mjs PreToolUse
+   ```
+
+   You should see a `deny` JSON response and a corresponding `high` severity entry appended to `~/.open-shepherd/events.jsonl`.
+
+### 4.4 Antigravity App (GUI), Antigravity CLI (`agy`) & Antigravity IDE
+
+1. **Install lifecycle hooks:** Copy [`agent-hooks/antigravity-hooks.example.json`](../agent-hooks/antigravity-hooks.example.json) into one of:
+   - **Global (Antigravity App, `agy` CLI, and Antigravity IDE):** `~/.gemini/config/hooks.json`
+   - **Workspace-level:** `.agents/hooks.json`
+
+   Update `/path/to/open-shepherd` in the copied file to point to your local clone.
+
+2. **How lifecycle enforcement works:**
+   - `PreToolUse` returns `{"decision": "deny", "reason": "..."}` when a policy violation is detected (or `{"decision": "allow"}` otherwise).
+   - `PreInvocation` checks `lastUserInput` for prompt-injection or remote shell directives and terminates the invocation (`terminationBehavior: "terminate"`) unless `OPEN_SHEPHERD_MODE=audit`.
+   - `PostToolUse`, `SessionStart`, and `Stop` record lifecycle audit events to `~/.open-shepherd/events.jsonl`.
+
+3. **Workspace & global config/transcript auditing (Antigravity IDE):**
+   - `WorkspaceSecurityScanner` audits workspace files (`.agents/hooks.json`, `.agents/mcp_config.json`, `.agents/rules/*`, `.agents/skills/*/SKILL.md`, `GEMINI.md`) as well as user-global Antigravity files:
+     - `~/.gemini/antigravity-cli/settings.json` and `~/.gemini/config/hooks.json`
+     - Global skills (`~/.gemini/config/skills/*/SKILL.md`, `~/.gemini/skills/*/SKILL.md`, `~/.gemini/antigravity-cli/skills/*/SKILL.md`)
+     - Global plugins (`~/.gemini/config/plugins/*/{hooks,mcp_config}.json`, `~/.gemini/antigravity-cli/plugins/*/{hooks,mcp_config}.json`)
+     - Recent conversation transcripts (`~/.gemini/antigravity*/brain/*/.system_generated/logs/transcript.jsonl`) for `--dangerously-skip-permissions` or unhooked dangerous commands
+
+4. **Enable Level 4 Network Proxy Guard (outside the Extension Host):**
+   Start [`agent-hooks/antigravity-proxy-guard.mjs`](../agent-hooks/antigravity-proxy-guard.mjs) to intercept HTTP/CONNECT traffic from `agy` CLI, GUI, and local MCP child processes:
+
+   ```bash
+   node /path/to/open-shepherd/agent-hooks/antigravity-proxy-guard.mjs
+   ```
+
+   Then launch `agy` or MCP servers with the proxy environment variables:
+
+   ```bash
+   HTTP_PROXY=http://127.0.0.1:8787 HTTPS_PROXY=http://127.0.0.1:8787 agy
+   ```
+
+   To smoke-test that metadata SSRF is blocked, run:
+
+   ```bash
+   curl -i -x http://127.0.0.1:8787 http://169.254.169.254/latest/meta-data/
+   ```
+
+   The proxy should respond with `403` (`Blocked by Open Shepherd Proxy Guard`) and append a `source: "proxy-guard"` event to `~/.open-shepherd/events.jsonl`.
+
 ---
 
 ## 5. Step-by-Step Operational Guides
 
-Package or sideload the extension as a `.vsix` (`engines.vscode: "^1.85.0"`), or run it in Extension Development Host (`F5`).
-
-### Commands & Settings
-
-- `ide-shepherd.scanWorkspace` (**IDE Shepherd: Scan Workspace & AI Configs for Security Risks**): Manually trigger a full workspace, global MCP, and Antigravity config/transcript security scan.
-- `ide-shepherd.exportEvents` (**IDE Shepherd: Export Security Events (JSONL / CEF / OCSF / SARIF)**): Export captured security events in `jsonl`, `cef`, `ocsf`, or `sarif` format.
-- `ide-shepherd.policyMode`: Choose `audit` (log only), `balanced` (block high-severity threats, default), or `strict` (block medium and high-severity threats).
+### Guide 1: Choosing a Policy Mode (`strict` vs `balanced` vs `audit-only`)
 
 Open-Shepherd separates **detection** from **blocking** using policy modes:
 
@@ -104,10 +229,10 @@ Open-Shepherd separates **detection** from **blocking** using policy modes:
 
 2. Use `audit-only` while baselining a new workspace, `balanced` for everyday development, and `strict` in high-security environments.
 
-**To change the AI CLI hook policy mode:**
+**To change the AI CLI hook or proxy guard policy mode:**
 
-- Default is `enforce` (blocks `PreToolUse` and `PreInvocation` violations).
-- Set `OPEN_SHEPHERD_MODE=audit` in your shell or hook command to log violations without blocking:
+- Default is `enforce` (blocks violations in `shepherd-hook.mjs` and `antigravity-proxy-guard.mjs`).
+- Set `OPEN_SHEPHERD_MODE=audit` to log violations without blocking:
 
   ```bash
   OPEN_SHEPHERD_MODE=audit node /path/to/open-shepherd/agent-hooks/shepherd-hook.mjs PreToolUse
@@ -125,12 +250,12 @@ Open-Shepherd separates **detection** from **blocking** using policy modes:
 
 **What is scanned:**
 
-| Category                | Files Checked                                                                                                                                                                                                                                                                                | What It Flags                                                            |
-| ----------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
-| VS Code & Devcontainers | `.vscode/settings.json`, `.vscode/tasks.json`, `.vscode/launch.json`, `.devcontainer/devcontainer.json`                                                                                                                                                                                      | Auto-run tasks (`folderOpen`), suspicious commands/hooks                 |
-| Git & Package Managers  | `.git/config`, `.git/hooks/*` (non-`.sample`), `package.json`, `.npmrc`, `pip.conf`                                                                                                                                                                                                          | Active git hook scripts, lifecycle scripts, custom indexes               |
-| MCP Server Configs      | `.vscode/mcp.json`, `.mcp.json`, `.cursor/mcp.json`, `.agents/mcp_config.json`, `~/.claude.json`, `~/.config/Claude/claude_desktop_config.json`, `~/.gemini/config/mcp_config.json`                                                                                                          | Untrusted/malicious MCP server commands and URLs                         |
-| AI Rules, Skills & CLI  | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.cursor/rules/*`, `.windsurfrules`, `.clinerules`, `.github/copilot-instructions.md`, `.agents/rules/*`, `.agents/skills/*/SKILL.md`, `.agents/hooks.json`, `~/.gemini/config/hooks.json`, `~/.gemini/antigravity-cli/settings.json` | Prompt-injection patterns, hidden shell directives, unsafe hook commands |
+| Category                | Files Checked                                                                                                                                                                                                                                                                                                                                         | What It Flags                                                            |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| VS Code & Devcontainers | `.vscode/settings.json`, `.vscode/tasks.json`, `.vscode/launch.json`, `.devcontainer/devcontainer.json`                                                                                                                                                                                                                                               | Auto-run tasks (`folderOpen`), suspicious commands/hooks                 |
+| Git & Package Managers  | `.git/config`, `.git/hooks/*` (non-`.sample`), `package.json`, `.npmrc`, `pip.conf`                                                                                                                                                                                                                                                                   | Active git hook scripts, lifecycle scripts, custom indexes               |
+| MCP Server Configs      | `.vscode/mcp.json`, `.mcp.json`, `.cursor/mcp.json`, `.agents/mcp_config.json`, `~/.claude.json`, `~/.config/Claude/claude_desktop_config.json`, `~/.gemini/config/mcp_config.json`                                                                                                                                                                   | Untrusted/malicious MCP server commands and URLs                         |
+| AI Rules, Skills & CLI  | `CLAUDE.md`, `AGENTS.md`, `GEMINI.md`, `.cursorrules`, `.cursor/rules/*`, `.windsurfrules`, `.clinerules`, `.github/copilot-instructions.md`, `.agents/rules/*`, `.agents/agents/*`, `.agents/skills/*/SKILL.md`, `.agents/hooks.json`, `~/.gemini/config/hooks.json`, `~/.gemini/antigravity-cli/settings.json`, global skills/plugins & transcripts | Prompt-injection patterns, hidden shell directives, unsafe hook commands |
 
 > **Tip:** Workspaces marked as trusted via `TrustedWorkspaceService` are skipped during workspace scans; you can revoke workspace trust if you want a previously trusted repo re-scanned.
 
@@ -159,8 +284,8 @@ tail -f ~/.open-shepherd/events.jsonl | jq .
 # Show only high or critical events
 jq 'select(.severity == "high" or .severity == "critical")' ~/.open-shepherd/events.jsonl
 
-# Show blocked AI agent hook decisions
-jq 'select(.source == "agent-hook" and .details.decision == "deny")' ~/.open-shepherd/events.jsonl
+# Show blocked AI agent hook or proxy-guard decisions
+jq 'select((.source == "agent-hook" or .source == "proxy-guard") and .details.decision == "deny")' ~/.open-shepherd/events.jsonl
 ```
 
 **Streaming to a webhook:**
@@ -174,10 +299,7 @@ export OPEN_SHEPHERD_WEBHOOK="https://siem.example.com/ingest/open-shepherd"
 - In `agent-hooks/shepherd-hook.mjs`, webhook delivery is triggered when a policy violation occurs and requires `https://` (or `http://` for `localhost` / `127.0.0.1` / `::1`).
 - Local JSONL logging is always best-effort and never blocks your editor or agent if a write fails.
 
-1. Copy [`agent-hooks/antigravity-hooks.example.json`](../agent-hooks/antigravity-hooks.example.json) into `~/.gemini/config/hooks.json` (global across Antigravity App, `agy` CLI, and Antigravity IDE) or `.agents/hooks.json` (workspace-level), updating `/path/to/open-shepherd` to your local clone path.
-2. When running the Open-Shepherd extension inside Antigravity IDE, `WorkspaceSecurityScanner` also audits `.agents/hooks.json`, `.agents/mcp_config.json`, `.agents/rules/*`, `.agents/skills/*/SKILL.md`, `GEMINI.md`, and `~/.gemini/antigravity-cli/settings.json`.
-3. `WorkspaceSecurityScanner` also audits global Antigravity skills (`~/.gemini/config/skills/*/SKILL.md`, `~/.gemini/skills/*/SKILL.md`, `~/.gemini/antigravity-cli/skills/*/SKILL.md`), plugins (`~/.gemini/config/plugins/*/{hooks,mcp_config}.json`), and conversation transcripts (`~/.gemini/antigravity*/brain/*/.system_generated/logs/transcript.jsonl`) for `--dangerously-skip-permissions` or unhooked dangerous commands.
-4. For Level 4 network protection of `agy` CLI, GUI, and local MCP child processes running outside the Extension Host, start [`agent-hooks/antigravity-proxy-guard.mjs`](../agent-hooks/antigravity-proxy-guard.mjs) (`node agent-hooks/antigravity-proxy-guard.mjs`) and launch processes with `HTTP_PROXY=http://127.0.0.1:8787 HTTPS_PROXY=http://127.0.0.1:8787` to audit and block cloud metadata SSRF and exfiltration domains.
+### Guide 5: Exporting Events to SIEM & Code Scanning (JSONL, CEF, OCSF, SARIF)
 
 You can export the recorded VS Code `SecurityEvent`s from the current session at any time:
 
@@ -191,12 +313,53 @@ You can export the recorded VS Code `SecurityEvent`s from the current session at
 
 ### Guide 6: Troubleshooting & Handling False Positives
 
-## 5. Environment Variables
+- **Check the logs:** Open the **Output** panel (`Ctrl+Shift+U` / `Cmd+Shift+U`) and select **Open Shepherd** from the channel dropdown.
+- **Temporarily switch to audit mode:** Set `"ide-shepherd.policyMode": "audit-only"` in VS Code settings (or `OPEN_SHEPHERD_MODE=audit` for `shepherd-hook.mjs` / `antigravity-proxy-guard.mjs`) to observe events without blocking workflows.
+- **Allowlist a legitimate extension or publisher:** Use **IDE Shepherd: Add Extension to Allow List** or **IDE Shepherd: Add Trusted Publisher**. If you need to reset your custom list, run **IDE Shepherd: Clear User Allow List**.
+- **Reset noisy task history:** Run **IDE Shepherd: Clear Task Timeline** to clear the **Task Timeline** view.
 
-| Variable                   | Default                         | Description                                                  |
-| -------------------------- | ------------------------------- | ------------------------------------------------------------ |
-| `OPEN_SHEPHERD_LOG`        | `~/.open-shepherd/events.jsonl` | Path to local JSONL event log                                |
-| `OPEN_SHEPHERD_WEBHOOK`    | _(unset)_                       | Optional HTTP(S) endpoint for `POST` JSON events             |
-| `OPEN_SHEPHERD_MODE`       | `enforce`                       | Hook/proxy policy mode (`enforce` blocks, `audit` logs)      |
-| `OPEN_SHEPHERD_PROXY_PORT` | `8787`                          | Listening port for `agent-hooks/antigravity-proxy-guard.mjs` |
-| `OPEN_SHEPHERD_PROXY_HOST` | `127.0.0.1`                     | Bind address for `agent-hooks/antigravity-proxy-guard.mjs`   |
+---
+
+## 6. Reference: Commands, Settings & Environment Variables
+
+### VS Code Commands
+
+| Command ID                                     | Title                                 | Default Shortcut               |
+| ---------------------------------------------- | ------------------------------------- | ------------------------------ |
+| `ide-shepherd.showStatus`                      | Show Security Status                  | `Ctrl+Shift+S` / `Cmd+Shift+S` |
+| `ide-shepherd.scanExtensions`                  | Scan Extensions                       | `Ctrl+Shift+E` / `Cmd+Shift+E` |
+| `ide-shepherd.scanWorkspace`                   | Scan Workspace & AI Configs           | —                              |
+| `ide-shepherd.exportEvents`                    | Export Security Events (SIEM / SARIF) | —                              |
+| `ide-shepherd.showEvents`                      | Show Security Events                  | —                              |
+| `ide-shepherd.refreshStatus`                   | Refresh Status                        | —                              |
+| `ide-shepherd.addToAllowList`                  | Add Extension to Allow List           | —                              |
+| `ide-shepherd.removeFromAllowList`             | Remove Extension from Allow List      | —                              |
+| `ide-shepherd.clearAllowList`                  | Clear User Allow List                 | —                              |
+| `ide-shepherd.addTrustedPublisher`             | Add Trusted Publisher                 | —                              |
+| `ide-shepherd.removeTrustedPublisher`          | Remove Trusted Publisher              | —                              |
+| `ide-shepherd.settings.refresh`                | Refresh Settings                      | —                              |
+| `ide-shepherd.settings.toggleDatadogTelemetry` | Toggle Datadog Telemetry              | —                              |
+| `ide-shepherd.clearTaskTimeline`               | Clear Task Timeline                   | —                              |
+
+### VS Code Settings
+
+| Setting                          | Type      | Default      | Description                                                              |
+| -------------------------------- | --------- | ------------ | ------------------------------------------------------------------------ |
+| `ide-shepherd.isEnabled`         | `boolean` | `true`       | Enable IDE Shepherd security monitoring                                  |
+| `ide-shepherd.policyMode`        | `string`  | `"balanced"` | Enforcement profile: `strict`, `balanced`, or `audit-only`               |
+| `ide-shepherd.autoScan`          | `boolean` | `true`       | Automatically scan extensions on startup                                 |
+| `ide-shepherd.notificationLevel` | `string`  | `"high"`     | Minimum severity for notifications: `all`, `high`, `critical`, or `none` |
+| `ide-shepherd.maxEvents`         | `number`  | `100`        | Maximum security events retained in memory (`10`–`1000`)                 |
+| `ide-shepherd.showStatusBar`     | `boolean` | `true`       | Show IDE Shepherd status in the status bar                               |
+| `ide-shepherd.datadog.isEnabled` | `boolean` | `false`      | Enable Datadog telemetry integration (requires local Datadog Agent)      |
+| `ide-shepherd.datadog.agentPort` | `number`  | `10518`      | Local Datadog Agent TCP port for log forwarding (`1024`–`65535`)         |
+
+### Environment Variables
+
+| Variable                   | Default                         | Applies To                    | Description                                                  |
+| -------------------------- | ------------------------------- | ----------------------------- | ------------------------------------------------------------ |
+| `OPEN_SHEPHERD_LOG`        | `~/.open-shepherd/events.jsonl` | VS Code, Neovim, Hooks, Proxy | Path to local JSONL event log                                |
+| `OPEN_SHEPHERD_WEBHOOK`    | _(unset)_                       | VS Code, Agent Hooks          | Optional HTTP(S) endpoint for `POST` JSON events             |
+| `OPEN_SHEPHERD_MODE`       | `enforce`                       | Agent Hooks, Proxy Guard      | Hook/proxy policy mode (`enforce` blocks, `audit` logs only) |
+| `OPEN_SHEPHERD_PROXY_PORT` | `8787`                          | Proxy Guard                   | Listening port for `agent-hooks/antigravity-proxy-guard.mjs` |
+| `OPEN_SHEPHERD_PROXY_HOST` | `127.0.0.1`                     | Proxy Guard                   | Bind address for `agent-hooks/antigravity-proxy-guard.mjs`   |
