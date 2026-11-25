@@ -4,6 +4,7 @@
 
 import { SeverityLevel } from '../lib/events/sec-events';
 import { Target } from '../lib/events/ext-events';
+import { EXTRA_NETWORK_RULES } from './network-rules-extra';
 
 export enum NetworkRuleType {
   URL = 'URL',
@@ -100,6 +101,7 @@ export const NETWORK_RULES: NetworkRule[] = [
     pattern: /\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}/,
     confidence: 1,
   },
+  ...EXTRA_NETWORK_RULES,
 ];
 
 // Helper patterns for IP filtering

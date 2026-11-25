@@ -4,6 +4,7 @@
 
 import { SeverityLevel } from '../lib/events/sec-events';
 import { Target } from '../lib/events/ext-events';
+import { EXTRA_PROCESS_RULES } from './process-rules-extra';
 
 export enum ProcessRuleType {
   COMMAND = 'COMMAND',
@@ -179,6 +180,7 @@ export const PROCESS_RULES: ProcessRule[] = [
     },
     confidence: 0.85,
   },
+  ...EXTRA_PROCESS_RULES,
 ];
 
 export function getRuleById(id: string): ProcessRule | undefined {

@@ -15,6 +15,12 @@ interface AccessRecord {
   timestamp: number;
 }
 
+interface TokenStoreReadRecord {
+  storeFamily: string;
+  filePath: string;
+  timestamp: number;
+}
+
 export interface CorrelationMatch {
   rule: string;
   description: string;
@@ -27,6 +33,7 @@ const SHELL_OR_EXFIL_CMD_RE = /\b(?:sh|bash|zsh|cmd|powershell|pwsh|python|pytho
 export class CorrelationEngine {
   private static _instance: CorrelationEngine;
   private _recentAccesses: Map<string, AccessRecord[]> = new Map();
+  private _tokenStoreReads: Map<string, TokenStoreReadRecord[]> = new Map();
   private _windowMs = CONFIG.POLICY.CORRELATION_WINDOW_MS;
 
   private constructor() {}
@@ -44,6 +51,7 @@ export class CorrelationEngine {
 
   clear(): void {
     this._recentAccesses.clear();
+    this._tokenStoreReads.clear();
   }
 
   recordSensitiveAccess(extensionId: string, kind: SensitiveAccessKind, detail: string, now = Date.now()): void {
@@ -84,6 +92,35 @@ export class CorrelationEngine {
       rule: 'Kill-Chain Exfiltration Correlation',
       description: `Extension accessed sensitive source (${latest.kind}: ${latest.detail}) before ${outboundKind} action (${target})`,
       sourceAccess: latest,
+    };
+  }
+
+  recordIdeTokenStoreRead(
+    extensionId: string,
+    storeFamily: string,
+    filePath: string,
+    now = Date.now(),
+  ): CorrelationMatch | null {
+    if (!extensionId || extensionId === 'unknown' || extensionId === 'caller:unknown') {
+      return null;
+    }
+    const cutoff = now - this._windowMs;
+    const entries = (this._tokenStoreReads.get(extensionId) ?? []).filter((e) => e.timestamp >= cutoff);
+    entries.push({ storeFamily, filePath, timestamp: now });
+    if (entries.length > 50) {
+      entries.shift();
+    }
+    this._tokenStoreReads.set(extensionId, entries);
+
+    const families = Array.from(new Set(entries.map((e) => e.storeFamily)));
+    if (families.length < 2) {
+      return null;
+    }
+
+    return {
+      rule: 'H207 Multi-Store AI/IDE Session Theft',
+      description: `Extension accessed multiple AI/IDE token stores within ${Math.round(this._windowMs / 1000)}s: ${families.join(', ')}`,
+      sourceAccess: { kind: 'fs_sensitive_read', detail: filePath, timestamp: now },
     };
   }
 

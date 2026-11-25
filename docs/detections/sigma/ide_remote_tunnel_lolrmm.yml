@@ -1,0 +1,36 @@
+title: IDE Remote Tunnel LOLRMM Execution
+id: 7f4c9a2e-3b1d-4e8a-9c5f-2a6d8e1b4f70
+status: experimental
+description: Detects IDE CLI binaries (VS Code, Cursor, Windsurf, VSCodium) launching or installing persistent remote tunnels, which can be abused as Living-Off-Trusted-Sites / LOLRMM C2 channels.
+author: Open Shepherd
+date: 2026-11-25
+references:
+  - https://code.visualstudio.com/docs/remote/tunnels
+tags:
+  - attack.command_and_control
+  - attack.t1219
+  - attack.persistence
+logsource:
+  category: process_creation
+  product: windows
+detection:
+  selection_image:
+    Image|endswith:
+      - '\code.exe'
+      - '\code-insiders.exe'
+      - '\codium.exe'
+      - '\cursor.exe'
+      - '\windsurf.exe'
+      - '\code-tunnel.exe'
+      - '\cursor-tunnel.exe'
+  selection_tunnel:
+    CommandLine|contains: 'tunnel'
+  selection_flags:
+    CommandLine|contains:
+      - 'service install'
+      - 'internal-run'
+      - '--accept-server-license-terms'
+  condition: selection_image and selection_tunnel and selection_flags
+falsepositives:
+  - Legitimate developer use of VS Code or Cursor Remote Tunnels
+level: high

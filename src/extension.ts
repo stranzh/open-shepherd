@@ -15,6 +15,8 @@ import { ExtensionIntegrityService } from './lib/services/extension-integrity-se
 import { ExportFormat, exportSecurityEvents } from './lib/services/siem-exporter';
 import { DatadogTelemetryService } from './lib/services/datadog/datadog-service';
 import { ExtensionChangeService } from './lib/services/extension-lifecycle-service';
+import { AgeHoldService } from './lib/services/age-hold-service';
+import { RevocationService } from './lib/services/revocation-service';
 import { TaskScanner } from './monitor/analysis/task-analyzer';
 import { WorkspaceSecurityScanner } from './scanner/workspace-security-scanner';
 import { WelcomeService } from './lib/services/welcome-service';
@@ -34,6 +36,16 @@ export function activate(context: vscode.ExtensionContext) {
     const integrityService = ExtensionIntegrityService.getInstance();
     integrityService.initialize(context).then(() => {
       Logger.info('IDE Shepherd Extension: Extension Integrity Service initialized');
+    });
+
+    const ageHoldService = AgeHoldService.getInstance();
+    ageHoldService.initialize(context).then(() => {
+      ExtensionChangeService.getInstance().registerListener(ageHoldService);
+    });
+
+    const revocationService = RevocationService.getInstance();
+    revocationService.initialize(context).then(() => {
+      ExtensionChangeService.getInstance().registerListener(revocationService);
     });
 
     // Initialize Allow List Service

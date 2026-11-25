@@ -29,12 +29,14 @@ export function buildDetectionFinding(
   activity: ExtensionActivityID = ExtensionActivityID.CREATE,
 ): OCSFDetectionFinding {
   const primaryIoC = securityEvent.getPrimaryIoC();
+  const severityId =
+    primaryIoC.rule === 'H207 Multi-Store AI/IDE Session Theft' ? (5 as any) : severityToOCSF(securityEvent.severity);
 
   return {
     activity_id: activity,
     category_uid: OCSFCategoryUID.FINDINGS,
     class_uid: OCSFClassUID.DETECTION_FINDING,
-    severity_id: severityToOCSF(securityEvent.severity),
+    severity_id: severityId,
     time: securityEvent.timestamp,
     type_uid: createTypeUID(OCSFClassUID.DETECTION_FINDING, activity),
     metadata: createOCSFMetadata(),
