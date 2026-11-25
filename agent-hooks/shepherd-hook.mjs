@@ -66,7 +66,26 @@ function summarizeToolInput(toolInput) {
   return Object.keys(summary).length > 0 ? summary : null;
 }
 
-function evaluatePolicy(input, eventType) {
+function normalizeFsPath(p) {
+  const resolved = path.resolve(p);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+}
+
+function isUnsafeSessionCwd(cwd) {
+  if (!cwd || typeof cwd !== 'string') {
+    return false;
+  }
+  const homeDir = process.env.OPEN_SHEPHERD_HOME || os.homedir();
+  const normalizedCwd = normalizeFsPath(cwd);
+  const unsafeDirs = [normalizeFsPath(homeDir), normalizeFsPath(path.join(homeDir, 'Downloads'))];
+  return unsafeDirs.includes(normalizedCwd);
+}
+
+function evaluatePolicy(input, eventType, sessionCwd) {
+  if (isUnsafeSessionCwd(sessionCwd)) {
+    return 'Unsafe session working directory (home or Downloads) blocked by Open Shepherd policy; isolate in a project subdirectory or use nono.sh';
+  }
+
   if (
     eventType === 'PreInvocation' &&
     typeof input.lastUserInput === 'string' &&
@@ -147,7 +166,8 @@ function handleInput() {
     process.argv[2] ||
     (input.toolCall ? 'PreToolUse' : input.invocationNum !== undefined ? 'PreInvocation' : 'tool_use');
 
-  let violation = evaluatePolicy(input, eventType);
+  const sessionCwd = input.cwd || (Array.isArray(input.workspacePaths) && input.workspacePaths[0]) || process.cwd();
+  let violation = evaluatePolicy(input, eventType, sessionCwd);
   if (!violation && truncated) {
     if (SENSITIVE_PATH_RE.test(raw) || DANGEROUS_COMMAND_RE.test(raw) || SUSPICIOUS_URL_RE.test(raw)) {
       violation = 'Suspicious pattern detected in oversized tool input';

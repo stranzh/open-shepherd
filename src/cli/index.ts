@@ -10,9 +10,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { WorkspaceFinding } from '../detection/workspace-rule-types';
 import { SeverityLevel } from '../lib/events/sec-events';
+import { parseSyslogEndpoint, sendSyslogPayload } from '../lib/services/syslog-transport';
 import { ConsoleLogger } from './console-logger';
 import { CliExportFormat, formatWorkspaceFindings } from './formatters';
 import { HeadlessWorkspaceScanner } from './headless-scanner';
+import { collectIdeInventory, formatInventoryOcsf } from './inventory';
+import { runPolicyCommand } from './policy';
 import { scanRemoteGithubRepo } from './scan-repo';
 
 export interface CliIo {
@@ -27,12 +30,15 @@ const VALID_FORMATS = new Set<CliExportFormat>(['jsonl', 'sarif', 'ocsf', 'cef']
 
 const USAGE_TEXT = [
   'Usage:',
-  '  open-shepherd scan [dir] [--global] [--format <jsonl|sarif|ocsf|cef>]',
-  '  open-shepherd scan-repo <github-url|owner/repo> [--ref <branch-or-sha>] [--token <token>] [--format <jsonl|sarif|ocsf|cef>]',
+  '  open-shepherd scan [dir] [--global] [--inventory] [--format <jsonl|sarif|ocsf|cef>] [--syslog <udp|tcp|tls://host:port>]',
+  '  open-shepherd scan-repo <github-url|owner/repo> [--ref <branch-or-sha>] [--token <token>] [--format <jsonl|sarif|ocsf|cef>] [--syslog <udp|tcp|tls://host:port>]',
+  '  open-shepherd policy <audit|impact|generate> [options]',
   '',
   'Options:',
   '  --global                 Scan user global AI/IDE configs (in addition to [dir] if provided)',
+  '  --inventory              Emit OCSF Inventory Info (class_uid 5001) for installed IDEs and extensions',
   '  --format <fmt>           Output format: jsonl (default), sarif, ocsf, cef',
+  '  --syslog <endpoint>      Forward formatted lines to udp://, tcp://, or tls:// host:port',
   '  --ref <branch-or-sha>    Git branch, tag, or commit SHA for scan-repo',
   '  --token <token>          GitHub API token (falls back to GITHUB_TOKEN / GH_TOKEN)',
   '  -h, --help               Show this help message',
@@ -53,20 +59,24 @@ function parseExportFormat(raw: string): CliExportFormat | null {
 interface ParsedScanArgs {
   help?: boolean;
   includeGlobal: boolean;
+  inventory: boolean;
   format: CliExportFormat;
+  syslogEndpoint?: string;
   dirArg?: string;
 }
 
 function parseScanArgs(args: string[]): ParsedScanArgs {
   let includeGlobal = false;
+  let inventory = false;
   let format: CliExportFormat = 'jsonl';
+  let syslogEndpoint: string | undefined;
   let dirArg: string | undefined;
   let endOfFlags = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!endOfFlags && (arg === '--help' || arg === '-h')) {
-      return { help: true, includeGlobal, format, dirArg };
+      return { help: true, includeGlobal, inventory, format, syslogEndpoint, dirArg };
     }
     if (!endOfFlags && arg === '--') {
       endOfFlags = true;
@@ -74,6 +84,26 @@ function parseScanArgs(args: string[]): ParsedScanArgs {
     }
     if (!endOfFlags && arg === '--global') {
       includeGlobal = true;
+      continue;
+    }
+    if (!endOfFlags && arg === '--inventory') {
+      inventory = true;
+      continue;
+    }
+    if (!endOfFlags && arg === '--syslog') {
+      const next = args[++i];
+      if (!next || next.startsWith('-')) {
+        throw new Error('Missing value for --syslog');
+      }
+      syslogEndpoint = next;
+      continue;
+    }
+    if (!endOfFlags && arg.startsWith('--syslog=')) {
+      const rawSyslog = arg.slice('--syslog='.length);
+      if (!rawSyslog) {
+        throw new Error('Missing value for --syslog');
+      }
+      syslogEndpoint = rawSyslog;
       continue;
     }
     if (!endOfFlags && arg === '--format') {
@@ -97,6 +127,22 @@ function parseScanArgs(args: string[]): ParsedScanArgs {
       format = parsedFmt;
       continue;
     }
+    if (!endOfFlags && arg === '--syslog') {
+      const next = args[++i];
+      if (!next || next.startsWith('-')) {
+        throw new Error('Missing value for --syslog');
+      }
+      syslogEndpoint = next;
+      continue;
+    }
+    if (!endOfFlags && arg.startsWith('--syslog=')) {
+      const rawSyslog = arg.slice('--syslog='.length);
+      if (!rawSyslog) {
+        throw new Error('Missing value for --syslog');
+      }
+      syslogEndpoint = rawSyslog;
+      continue;
+    }
     if (!endOfFlags && arg.startsWith('-')) {
       throw new Error(`Unknown option "${arg}" for command "scan"`);
     }
@@ -106,7 +152,7 @@ function parseScanArgs(args: string[]): ParsedScanArgs {
     dirArg = arg;
   }
 
-  return { includeGlobal, format, dirArg };
+  return { includeGlobal, inventory, format, syslogEndpoint, dirArg };
 }
 
 interface ParsedScanRepoArgs {
@@ -115,6 +161,7 @@ interface ParsedScanRepoArgs {
   ref?: string;
   token?: string;
   format: CliExportFormat;
+  syslogEndpoint?: string;
 }
 
 function parseScanRepoArgs(args: string[]): ParsedScanRepoArgs {
@@ -122,12 +169,13 @@ function parseScanRepoArgs(args: string[]): ParsedScanRepoArgs {
   let ref: string | undefined;
   let token: string | undefined;
   let format: CliExportFormat = 'jsonl';
+  let syslogEndpoint: string | undefined;
   let endOfFlags = false;
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!endOfFlags && (arg === '--help' || arg === '-h')) {
-      return { help: true, repoArg, ref, token, format };
+      return { help: true, repoArg, ref, token, format, syslogEndpoint };
     }
     if (!endOfFlags && arg === '--') {
       endOfFlags = true;
@@ -186,6 +234,22 @@ function parseScanRepoArgs(args: string[]): ParsedScanRepoArgs {
       format = parsedFmt;
       continue;
     }
+    if (!endOfFlags && arg === '--syslog') {
+      const next = args[++i];
+      if (!next || next.startsWith('-')) {
+        throw new Error('Missing value for --syslog');
+      }
+      syslogEndpoint = next;
+      continue;
+    }
+    if (!endOfFlags && arg.startsWith('--syslog=')) {
+      const rawSyslog = arg.slice('--syslog='.length);
+      if (!rawSyslog) {
+        throw new Error('Missing value for --syslog');
+      }
+      syslogEndpoint = rawSyslog;
+      continue;
+    }
     if (!endOfFlags && arg.startsWith('-')) {
       throw new Error(`Unknown option "${arg}" for command "scan-repo"`);
     }
@@ -195,7 +259,7 @@ function parseScanRepoArgs(args: string[]): ParsedScanRepoArgs {
     repoArg = arg;
   }
 
-  return { repoArg, ref, token, format };
+  return { repoArg, ref, token, format, syslogEndpoint };
 }
 
 export async function runCli(argv: string[], io?: Partial<CliIo>): Promise<number> {
@@ -222,7 +286,16 @@ export async function runCli(argv: string[], io?: Partial<CliIo>): Promise<numbe
   const scanner = new HeadlessWorkspaceScanner(logger);
   let findings: WorkspaceFinding[] = [];
   let format: CliExportFormat = 'jsonl';
+  let syslogEndpoint: string | undefined;
   let targetLabel = '';
+
+  if (command === 'policy') {
+    return runPolicyCommand(rest, {
+      stdout: resolvedIo.stdout,
+      stderr: resolvedIo.stderr,
+      homeDir: resolvedIo.homeDir,
+    });
+  }
 
   if (command === 'scan') {
     let parsed: ParsedScanArgs;
@@ -239,7 +312,27 @@ export async function runCli(argv: string[], io?: Partial<CliIo>): Promise<numbe
       return 0;
     }
 
+    if (parsed.inventory) {
+      const inv = collectIdeInventory(resolvedIo.homeDir);
+      const invOutput = formatInventoryOcsf(inv);
+      if (invOutput.trim().length > 0) {
+        resolvedIo.stdout(invOutput);
+        if (parsed.syslogEndpoint) {
+          try {
+            parseSyslogEndpoint(parsed.syslogEndpoint);
+            await sendSyslogPayload(parsed.syslogEndpoint, invOutput.split('\n'));
+          } catch (err: unknown) {
+            const msg = err instanceof Error ? err.message : String(err);
+            resolvedIo.stderr(`syslog delivery failed: ${msg}`);
+            return 2;
+          }
+        }
+      }
+      return 0;
+    }
+
     format = parsed.format;
+    syslogEndpoint = parsed.syslogEndpoint;
 
     if (parsed.dirArg !== undefined || !parsed.includeGlobal) {
       const baseCwd = resolvedIo.cwd ?? process.cwd();
@@ -291,6 +384,7 @@ export async function runCli(argv: string[], io?: Partial<CliIo>): Promise<numbe
     }
 
     format = parsed.format;
+    syslogEndpoint = parsed.syslogEndpoint;
     targetLabel = parsed.repoArg;
 
     try {
@@ -310,9 +404,29 @@ export async function runCli(argv: string[], io?: Partial<CliIo>): Promise<numbe
     return 2;
   }
 
+  if (syslogEndpoint) {
+    try {
+      parseSyslogEndpoint(syslogEndpoint);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      resolvedIo.stderr(`syslog configuration error: ${msg}`);
+      return 2;
+    }
+  }
+
   const formatted = formatWorkspaceFindings(findings, format, { target: targetLabel });
   if (formatted.trim().length > 0) {
     resolvedIo.stdout(formatted);
+    if (syslogEndpoint) {
+      try {
+        const lines = format === 'sarif' ? [formatted] : formatted.split('\n');
+        await sendSyslogPayload(syslogEndpoint, lines);
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        resolvedIo.stderr(`syslog delivery failed: ${msg}`);
+        return 2;
+      }
+    }
   }
 
   return findings.some((f) => f.severity === SeverityLevel.HIGH) ? 1 : 0;

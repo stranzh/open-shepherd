@@ -1,0 +1,5 @@
+# Trusted enterprise extension publishers (one per line)
+ms-vscode
+ms-python
+redhat
+golang

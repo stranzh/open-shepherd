@@ -42,6 +42,7 @@ import {
 } from '../detection/workspace-rules';
 import { SeverityLevel } from '../lib/events/sec-events';
 import { ScanReporter } from './console-logger';
+import { scanDownloadsInstructionFiles } from './downloads-guard';
 import { scanTunnelPersistence } from './tunnel-persistence';
 
 const MAX_CONFIG_BYTES = 512 * 1024;
@@ -604,6 +605,12 @@ export class HeadlessWorkspaceScanner {
     if (tunnelFindings.length > 0) {
       allFindings.push(...tunnelFindings);
       this.emitReport(tunnelFindings, 'User Global MCP', homeDir);
+    }
+
+    const downloadsFindings = scanDownloadsInstructionFiles(homeDir);
+    if (downloadsFindings.length > 0) {
+      allFindings.push(...downloadsFindings);
+      this.emitReport(downloadsFindings, 'User Global MCP', path.join(homeDir, 'Downloads'));
     }
 
     return allFindings;
