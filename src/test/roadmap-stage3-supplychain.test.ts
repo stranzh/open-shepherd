@@ -106,7 +106,7 @@ suite('Roadmap Stage 3C - Supply Chain Services (Age-Hold & Revocation)', () => 
       const fetchStub = sinon.stub();
       const service = new AgeHoldService({ fetchFn: fetchStub as unknown as typeof fetch, nowFn: () => now });
 
-      const ctx = makeMockContext({ 'ide-shepherd.ageHoldCache': { [fakeExt.id]: tenDaysAgoMs } });
+      const ctx = makeMockContext({ 'ide-shepherd.ageHoldCache': { [`${fakeExt.id}@2.0.0`]: tenDaysAgoMs } });
       await service.initialize(ctx);
 
       expect(fetchStub.called).to.equal(false);
@@ -169,6 +169,28 @@ suite('Roadmap Stage 3C - Supply Chain Services (Age-Hold & Revocation)', () => 
       await service.initialize(ctx);
 
       expect(fetchStub.called).to.equal(false);
+      expect(emitSecStub.calledOnce).to.equal(true);
+    });
+
+    test('preserves expired cache when offline fetch fails', async () => {
+      const now = 1_700_000_000_000;
+      const fakeExt = makeExtension('ovsx.revokedpkg');
+      sandbox
+        .stub(ExtensionsRepository, 'getInstance')
+        .returns({ getUserExtensions: () => [fakeExt] } as unknown as ExtensionsRepository);
+
+      sandbox.stub(Logger, 'warn');
+      sandbox.stub(Logger, 'info');
+      const emitSecStub = sandbox.stub(IDEStatusService, 'emitSecurityEvent').resolves();
+
+      const fetchStub = sinon.stub().rejects(new Error('offline'));
+      const service = new RevocationService({ fetchFn: fetchStub as unknown as typeof fetch, nowFn: () => now });
+
+      const ctx = makeMockContext({
+        'ide-shepherd.revocationCache': { fetchedAt: now - 48 * 60 * 60 * 1000, revokedIds: ['ovsx.revokedpkg'] },
+      });
+      await service.initialize(ctx);
+
       expect(emitSecStub.calledOnce).to.equal(true);
     });
   });

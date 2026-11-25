@@ -109,7 +109,7 @@ function auditPolicyObject(policies: Record<string, unknown>, sourceLabel: strin
       'AllowedExtensions is missing or wildcard (*)',
       'Restrict AllowedExtensions to an explicit publisher/extension allowlist rather than permitting all extensions.',
     );
-  } else if (isPlainObject(allowedExt) && allowedExt['*'] === true) {
+  } else if (isPlainObject(allowedExt) && allowedExt['*'] !== false) {
     addFinding(
       findings,
       'POLICY-ALLOWED-EXTENSIONS',
@@ -321,7 +321,7 @@ export function generatePolicyFromGitOps(inputDir: string): GitOpsPolicyBundle {
 
   const vscodePolicy: Record<string, unknown> = {
     AllowedExtensions: allowedExtensionsMap,
-    ChatMCP: true,
+    ChatMCP: 'disabled',
     ChatAllowManagedMcpServersOnly: true,
     ChatAllowManagedHooksOnly: true,
     RemoteTunnelAccess: false,
@@ -330,7 +330,7 @@ export function generatePolicyFromGitOps(inputDir: string): GitOpsPolicyBundle {
 
   const admxPolicy: Record<string, unknown> = {
     AllowedExtensions: JSON.stringify(allowedExtensionsMap),
-    ChatMCP: 1,
+    ChatMCP: 0,
     ChatAllowManagedMcpServersOnly: 1,
     ChatAllowManagedHooksOnly: 1,
     RemoteTunnelAccess: 0,

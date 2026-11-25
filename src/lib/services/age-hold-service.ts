@@ -27,6 +27,7 @@ export class AgeHoldService implements ExtensionChangeListener {
 
   private _context: vscode.ExtensionContext | null = null;
   private _cache: Record<string, number> = {};
+  private _alertedKeys = new Set<string>();
   private _fetchFn: typeof fetch;
   private _nowFn: () => number;
 
@@ -50,7 +51,7 @@ export class AgeHoldService implements ExtensionChangeListener {
     }
 
     const autoUpdate = vscode.workspace.getConfiguration('extensions').get('autoUpdate');
-    if (autoUpdate === true) {
+    if (autoUpdate === true || autoUpdate === 'onlyEnabledExtensions') {
       Logger.warn(
         'AgeHoldService: extensions.autoUpdate is enabled; automatic updates may bypass 48-hour age-hold review.',
       );
@@ -69,19 +70,22 @@ export class AgeHoldService implements ExtensionChangeListener {
     let dirty = false;
 
     for (const ext of extensions) {
-      let lastUpdatedMs = this._cache[ext.id];
+      const version = ext.packageJSON?.version ?? 'unknown';
+      const cacheKey = `${ext.id}@${version}`;
+      let lastUpdatedMs = this._cache[cacheKey];
       if (typeof lastUpdatedMs !== 'number' || Number.isNaN(lastUpdatedMs)) {
         const fetched = await this.fetchLastUpdatedMs(ext);
         if (fetched === null) {
           continue;
         }
         lastUpdatedMs = fetched;
-        this._cache[ext.id] = lastUpdatedMs;
+        this._cache[cacheKey] = lastUpdatedMs;
         dirty = true;
       }
 
       const ageMs = this._nowFn() - lastUpdatedMs;
-      if (ageMs < AgeHoldService.AGE_HOLD_MS) {
+      if (ageMs < AgeHoldService.AGE_HOLD_MS && !this._alertedKeys.has(cacheKey)) {
+        this._alertedKeys.add(cacheKey);
         Logger.warn(
           `AgeHoldService: Extension ${ext.id} was updated within the 48-hour age-hold window (ageMs=${ageMs}).`,
         );
@@ -123,12 +127,12 @@ export class AgeHoldService implements ExtensionChangeListener {
       return null;
     }
 
-    const marketplaceMs = await this.queryMarketplace(`${publisher}.${name}`);
+    const version = ext.packageJSON?.version;
+    const marketplaceMs = await this.queryMarketplace(`${publisher}.${name}`, version);
     if (marketplaceMs !== null) {
       return marketplaceMs;
     }
 
-    const version = ext.packageJSON?.version;
     if (version) {
       return this.queryOpenVsx(publisher, name, version);
     }
@@ -144,7 +148,7 @@ export class AgeHoldService implements ExtensionChangeListener {
     return [ext.packageJSON?.publisher, ext.packageJSON?.name];
   }
 
-  private async queryMarketplace(extensionId: string): Promise<number | null> {
+  private async queryMarketplace(extensionId: string, version?: string): Promise<number | null> {
     try {
       const response = await this._fetchFn(AgeHoldService.MARKETPLACE_QUERY_URL, {
         method: 'POST',
@@ -155,10 +159,13 @@ export class AgeHoldService implements ExtensionChangeListener {
         return null;
       }
       const data = (await response.json()) as {
-        results?: Array<{ extensions?: Array<{ lastUpdated?: string; versions?: Array<{ lastUpdated?: string }> }> }>;
+        results?: Array<{
+          extensions?: Array<{ lastUpdated?: string; versions?: Array<{ version?: string; lastUpdated?: string }> }>;
+        }>;
       };
       const extEntry = data?.results?.[0]?.extensions?.[0];
-      const rawDate = extEntry?.versions?.[0]?.lastUpdated ?? extEntry?.lastUpdated;
+      const matchedVer = version ? extEntry?.versions?.find((v) => v.version === version) : undefined;
+      const rawDate = matchedVer?.lastUpdated ?? extEntry?.versions?.[0]?.lastUpdated ?? extEntry?.lastUpdated;
       if (!rawDate) {
         return null;
       }

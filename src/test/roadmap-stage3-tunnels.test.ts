@@ -91,4 +91,19 @@ suite('Roadmap Stage 3A - IDE Remote Tunnels', () => {
       fs.rmSync(tmpHome, { recursive: true, force: true });
     }
   });
+
+  test('ignores unrelated non-IDE tunnel services such as ssh-tunnel.service', () => {
+    const homeDir = fs.mkdtempSync(path.join(os.tmpdir(), 'os-tunnel-nonide-'));
+    try {
+      const systemdDir = path.join(homeDir, '.config', 'systemd', 'user');
+      fs.mkdirSync(systemdDir, { recursive: true });
+      fs.writeFileSync(
+        path.join(systemdDir, 'ssh-tunnel.service'),
+        '[Service]\nExecStart=/usr/bin/ssh -N -L 8080:localhost:80 host\n',
+      );
+      expect(scanTunnelPersistence(homeDir)).to.have.lengthOf(0);
+    } finally {
+      fs.rmSync(homeDir, { recursive: true, force: true });
+    }
+  });
 });

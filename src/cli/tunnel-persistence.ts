@@ -4,7 +4,23 @@ import * as path from 'path';
 import { SeverityLevel } from '../lib/events/sec-events';
 import { WorkspaceFinding, WorkspaceRuleType } from '../detection/workspace-rule-types';
 
-const WIN_RUN_TUNNEL_RE = /code-tunnel|cursor-tunnel|tunnel\s+service/i;
+const WIN_RUN_TUNNEL_RE =
+  /\b(?:code(?:-insiders)?|codium|cursor|windsurf|(?:code|cursor)-tunnel)(?:\.exe)?\b[^\n]*\btunnel\b/i;
+const IDE_TUNNEL_NAME_RE = /(?:code|cursor|codium|windsurf|visualstudio).*tunnel/i;
+const IDE_TUNNEL_CONTENT_RE =
+  /\b(?:code(?:-insiders)?|codium|cursor|windsurf|(?:code|cursor)-tunnel)(?:\.exe)?\b[^\n]*\btunnel\b|devtunnels\.ms|tunnels\.api\.visualstudio\.com/i;
+
+function isIdeTunnelFile(filePath: string): boolean {
+  if (IDE_TUNNEL_NAME_RE.test(path.basename(filePath))) {
+    return true;
+  }
+  try {
+    const content = fs.readFileSync(filePath, 'utf8');
+    return IDE_TUNNEL_CONTENT_RE.test(content);
+  } catch {
+    return false;
+  }
+}
 
 function makeTunnelFinding(filePath: string, finding: string, description: string): WorkspaceFinding {
   return {
@@ -45,8 +61,11 @@ export function scanTunnelPersistence(
   const systemdDir = path.join(homeDir, '.config', 'systemd', 'user');
   for (const filePath of findMatchingFiles(
     systemdDir,
-    (name) => name.includes('tunnel') && name.endsWith('.service'),
+    (name) => name.toLowerCase().includes('tunnel') && name.toLowerCase().endsWith('.service'),
   )) {
+    if (!isIdeTunnelFile(filePath)) {
+      continue;
+    }
     findings.push(
       makeTunnelFinding(
         filePath,
@@ -59,8 +78,11 @@ export function scanTunnelPersistence(
   const launchAgentsDir = path.join(homeDir, 'Library', 'LaunchAgents');
   for (const filePath of findMatchingFiles(
     launchAgentsDir,
-    (name) => name.includes('tunnel') && name.endsWith('.plist'),
+    (name) => name.toLowerCase().includes('tunnel') && name.toLowerCase().endsWith('.plist'),
   )) {
+    if (!isIdeTunnelFile(filePath)) {
+      continue;
+    }
     findings.push(
       makeTunnelFinding(
         filePath,
@@ -74,6 +96,7 @@ export function scanTunnelPersistence(
     { relPath: path.join('.vscode-cli', 'code_tunnel.json'), label: 'VS Code CLI tunnel state file' },
     { relPath: path.join('.vscode-cli', 'tunnel-service.log'), label: 'VS Code CLI tunnel service log' },
     { relPath: path.join('.cursor-cli', 'code_tunnel.json'), label: 'Cursor CLI tunnel state file' },
+    { relPath: path.join('.cursor-cli', 'tunnel-service.log'), label: 'Cursor CLI tunnel service log' },
   ];
 
   for (const artifact of fixedArtifacts) {

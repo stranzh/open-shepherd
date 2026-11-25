@@ -6,6 +6,7 @@ import { IDE_AND_AGENT_REGISTRY } from '../detection/ide-registry';
 export interface InstalledIdeEntry {
   id: string;
   name: string;
+  version?: string;
   matchedHomePaths: string[];
 }
 
@@ -56,7 +57,11 @@ export function collectIdeInventory(homeDir: string = os.homedir()): IdeInventor
       }
     }
     if (matchedHomePaths.length > 0) {
-      ides.push({ id: entry.id, name: entry.name, matchedHomePaths });
+      let version: string | undefined;
+      if (entry.id === 'zed') {
+        version = process.env.OPEN_SHEPHERD_ZED_VERSION?.trim() || undefined;
+      }
+      ides.push({ id: entry.id, name: entry.name, version, matchedHomePaths });
     }
   }
 
@@ -118,7 +123,13 @@ export function formatInventoryOcsf(inventory: IdeInventoryReport): string {
         activity_id: 2,
         time: inventory.timestamp,
         device: { hostname: inventory.hostname },
-        software: { name: ide.name, uid: ide.id, type: 'ide', install_paths: ide.matchedHomePaths },
+        software: {
+          name: ide.name,
+          uid: ide.id,
+          version: ide.version,
+          type: 'ide',
+          install_paths: ide.matchedHomePaths,
+        },
       }),
     );
   }

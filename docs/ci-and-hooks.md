@@ -16,6 +16,15 @@ open-shepherd scan . --global --format sarif > open-shepherd.sarif
 
 # Scan a remote GitHub repository over the GitHub API without cloning
 open-shepherd scan-repo https://github.com/owner/repo --format jsonl
+
+# Audit enterprise VS Code policies, evaluate allowlist impact, or compile GitOps policy manifests
+open-shepherd policy audit
+open-shepherd policy impact --allowlist docs/policy-gitops/allowed_extensions.example.txt
+open-shepherd policy generate docs/policy-gitops
+
+# Collect OCSF Inventory Info (class_uid 5001) and optionally forward over Syslog (udp/tcp/tls)
+open-shepherd scan --inventory
+open-shepherd scan . --format cef --syslog udp://127.0.0.1:514
 ```
 
 - **Formats (`--format`)**: `jsonl` (default), `sarif`, `ocsf`, `cef`

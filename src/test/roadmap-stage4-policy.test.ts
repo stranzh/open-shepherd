@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { runCli } from '../cli/index';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -128,5 +129,35 @@ suite('Stage 4A: Enterprise Policy CLI & GitOps', () => {
     expect(genCode).to.equal(0);
     const parsed = JSON.parse(stdoutChunks.join('')) as { vscodePolicy: Record<string, unknown> };
     expect(parsed.vscodePolicy).to.have.property('AllowedExtensions');
+  });
+
+  test('generatePolicyFromGitOps output passes auditEnterprisePolicies with 0 findings', () => {
+    const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'os-policy-rt-'));
+    try {
+      fs.writeFileSync(path.join(tmpDir, 'allowed_publishers.txt'), 'ms-vscode\n');
+      const { vscodePolicy } = generatePolicyFromGitOps(tmpDir);
+      const policyFile = path.join(tmpDir, 'policy.json');
+      fs.writeFileSync(policyFile, JSON.stringify(vscodePolicy));
+      const audit = auditEnterprisePolicies({ linuxPolicyPath: policyFile });
+      expect(audit.findings).to.have.lengthOf(0);
+    } finally {
+      fs.rmSync(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test('runCli routes policy, scan --inventory, and rejects invalid --syslog with exit 2', async () => {
+    const out: string[] = [];
+    const err: string[] = [];
+    const io = { stdout: (s: string) => out.push(s), stderr: (s: string) => err.push(s) };
+
+    expect(await runCli(['policy', '--help'], io)).to.equal(0);
+    expect(await runCli(['scan', '--inventory'], io)).to.equal(0);
+
+    const cleanDir = fs.mkdtempSync(path.join(os.tmpdir(), 'os-cli-syslog-'));
+    try {
+      expect(await runCli(['scan', cleanDir, '--syslog', 'invalid-endpoint'], io)).to.equal(2);
+    } finally {
+      fs.rmSync(cleanDir, { recursive: true, force: true });
+    }
   });
 });

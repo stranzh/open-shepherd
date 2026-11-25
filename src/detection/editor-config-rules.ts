@@ -5,6 +5,9 @@
  * and Zed tasks.json & version checks.
  */
 
+import * as fs from 'fs';
+import * as os from 'os';
+import * as path from 'path';
 import { SeverityLevel } from '../lib/events/sec-events';
 import { TASK_RULES } from './task-rules';
 import { isPlainObject, stripJsonComments, WorkspaceFinding, WorkspaceRuleType } from './workspace-rule-types';
@@ -261,4 +264,66 @@ export function isVulnerableZedVersion(version: string): boolean {
     return minor < 165;
   }
   return patch < 4;
+}
+
+/**
+ * Check installed Zed version against pre-IDEsaster (< 0.165.4) baseline.
+ */
+export function checkInstalledZedVersion(
+  homeDir = os.homedir(),
+  options?: { versionString?: string; plistPaths?: string[] },
+): WorkspaceFinding[] {
+  let version = options?.versionString?.trim() || process.env.OPEN_SHEPHERD_ZED_VERSION?.trim() || '';
+  let sourcePath = 'zed-version';
+
+  if (!version) {
+    const plistCandidates = options?.plistPaths ?? [
+      path.join(homeDir, 'Applications', 'Zed.app', 'Contents', 'Info.plist'),
+      '/Applications/Zed.app/Contents/Info.plist',
+    ];
+    for (const plistPath of plistCandidates) {
+      try {
+        if (fs.existsSync(plistPath)) {
+          const plist = fs.readFileSync(plistPath, 'utf8');
+          const m = /<key>CFBundleShortVersionString<\/key>\s*<string>([^<]+)<\/string>/i.exec(plist);
+          if (m && m[1].trim()) {
+            version = m[1].trim();
+            sourcePath = plistPath;
+            break;
+          }
+        }
+      } catch {
+        // ignore unreadable plist
+      }
+    }
+  }
+
+  if (!version) {
+    const versionTxt = path.join(homeDir, '.config', 'zed', 'version.txt');
+    try {
+      if (fs.existsSync(versionTxt)) {
+        version = fs.readFileSync(versionTxt, 'utf8').trim();
+        sourcePath = versionTxt;
+      }
+    } catch {
+      // ignore unreadable version.txt
+    }
+  }
+
+  if (!version || !isVulnerableZedVersion(version)) {
+    return [];
+  }
+
+  return [
+    {
+      ruleId: 'zed_vulnerable_idesaster_version',
+      ruleName: 'Zed: Vulnerable Pre-IDEsaster Version (< 0.165.4)',
+      type: WorkspaceRuleType.VSCODE_CONFIG,
+      severity: SeverityLevel.HIGH,
+      filePath: sourcePath,
+      finding: `Zed ${version}`,
+      description: `Installed Zed version ${version} is below 0.165.4 and vulnerable to IDEsaster prompt/command execution.`,
+      confidence: 0.95,
+    },
+  ];
 }

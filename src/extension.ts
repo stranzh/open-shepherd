@@ -39,13 +39,15 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     const ageHoldService = AgeHoldService.getInstance();
-    ageHoldService.initialize(context).then(() => {
-      ExtensionChangeService.getInstance().registerListener(ageHoldService);
+    ExtensionChangeService.getInstance().registerListener(ageHoldService);
+    ageHoldService.initialize(context).catch((err) => {
+      Logger.warn(`IDE Shepherd Extension: AgeHoldService initialization failed: ${(err as Error).message}`);
     });
 
     const revocationService = RevocationService.getInstance();
-    revocationService.initialize(context).then(() => {
-      ExtensionChangeService.getInstance().registerListener(revocationService);
+    ExtensionChangeService.getInstance().registerListener(revocationService);
+    revocationService.initialize(context).catch((err) => {
+      Logger.warn(`IDE Shepherd Extension: RevocationService initialization failed: ${(err as Error).message}`);
     });
 
     // Initialize Allow List Service

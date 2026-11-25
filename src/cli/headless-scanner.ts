@@ -18,6 +18,7 @@ import {
 } from '../detection/ai-mcp-extra-rules';
 import { scanJupyterNotebook, scanMsbuildProject, scanXcodePbxproj } from '../detection/build-notebook-rules';
 import {
+  checkInstalledZedVersion,
   scanEmacsDirLocals,
   scanLazyLockJson,
   scanVimConfig,
@@ -55,7 +56,7 @@ export interface ScanDirectoryOptions {
 export interface ConfigScannerEntry {
   relPath?: string;
   match: (normPath: string) => boolean;
-  scan: (content: string, filePath: string) => WorkspaceFinding[];
+  scan: (content: string, filePath: string, isGlobal?: boolean) => WorkspaceFinding[];
   pinMcpMode?: 'json' | 'toml';
 }
 
@@ -270,7 +271,7 @@ export const CONFIG_SCANNERS: ConfigScannerEntry[] = [
       endsWithPath(p, '.nvimrc') ||
       endsWithPath(p, '.nvim.lua') ||
       endsWithPath(p, '.exrc'),
-    scan: (content, filePath) => scanVimConfig(content, filePath, false),
+    scan: (content, filePath, isGlobal) => scanVimConfig(content, filePath, Boolean(isGlobal)),
   },
   {
     match: (p) => endsWithPath(p, '.config/nvim/init.vim') || endsWithPath(p, '.config/nvim/init.lua'),
@@ -315,6 +316,7 @@ const GLOBAL_MCP_CONFIG_PATHS: string[][] = [
   ['.gemini', 'config', 'hooks.json'],
   ['.gemini', 'GEMINI.md'],
   ['.gemini', 'antigravity-cli', 'settings.json'],
+  ['.vimrc'],
   ['.config', 'nvim', 'init.vim'],
   ['.config', 'nvim', 'init.lua'],
 ];
@@ -353,18 +355,27 @@ export class HeadlessWorkspaceScanner {
     return this.scanMatchedContent(content, filePath, baseDir, true);
   }
 
+  private scanGlobalFile(filePath: string): WorkspaceFinding[] {
+    const content = readTextSafe(filePath);
+    if (content === null) {
+      return [];
+    }
+    return this.scanMatchedContent(content, filePath, undefined, true, true);
+  }
+
   private scanMatchedContent(
     content: string,
     filePath: string,
     baseDir: string | undefined,
     allowDiskPin: boolean,
+    isGlobal = false,
   ): WorkspaceFinding[] {
     const norm = filePath.replace(/\\/g, '/').toLowerCase();
     const entry = CONFIG_SCANNERS.find((item) => item.match(norm));
     if (!entry) {
       return [];
     }
-    const findings = entry.scan(content, filePath);
+    const findings = entry.scan(content, filePath, isGlobal);
     if (entry.pinMcpMode && allowDiskPin) {
       if (entry.pinMcpMode === 'json') {
         findings.push(...this.mcpPinTracker.checkMcpConfig(content, filePath, baseDir));
@@ -537,7 +548,7 @@ export class HeadlessWorkspaceScanner {
 
     for (const segments of GLOBAL_MCP_CONFIG_PATHS) {
       const globalMcp = path.join(homeDir, ...segments);
-      const mcpFindings = this.scanSingleFile(globalMcp);
+      const mcpFindings = this.scanGlobalFile(globalMcp);
       if (mcpFindings.length > 0) {
         allFindings.push(...mcpFindings);
         this.emitReport(mcpFindings, 'User Global MCP', path.dirname(globalMcp));
@@ -611,6 +622,12 @@ export class HeadlessWorkspaceScanner {
     if (downloadsFindings.length > 0) {
       allFindings.push(...downloadsFindings);
       this.emitReport(downloadsFindings, 'User Global MCP', path.join(homeDir, 'Downloads'));
+    }
+
+    const zedVersionFindings = checkInstalledZedVersion(homeDir);
+    if (zedVersionFindings.length > 0) {
+      allFindings.push(...zedVersionFindings);
+      this.emitReport(zedVersionFindings, 'User Global MCP', homeDir);
     }
 
     return allFindings;
