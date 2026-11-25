@@ -62,7 +62,7 @@ export function exportSecurityEvents(events: SecurityEvent[], format: ExportForm
           'CEF:0',
           'OpenShepherd',
           'IDE-Shepherd',
-          '3.1.2',
+          '3.2.0',
           escapeCef(String(ev.securityEventType)),
           escapeCef(ioc.rule),
           String(cefSeverity(ev.severity)),
@@ -93,7 +93,7 @@ export function exportSecurityEvents(events: SecurityEvent[], format: ExportForm
       });
 
       const rules = Array.from(rulesMap.values());
-      const driver = { name: 'Open Shepherd', version: '3.1.2', rules };
+      const driver = { name: 'Open Shepherd', version: '3.2.0', rules };
       const sarifDoc = {
         $schema: 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json',
         version: '2.1.0',

@@ -1,0 +1,41 @@
+# Source TypeScript (compiled output in out/ is distributed)
+src/
+
+# Test output
+out/test/**
+
+# Build tooling
+tsconfig*.json
+eslint.config.*
+.eslintrc.*
+.prettierrc*
+.prettierignore
+prettier.config.*
+lint-staged.config.*
+.lintstagedrc.json
+cspell.json
+.vscode-test.mjs
+
+# Hooks and CI
+.husky/**
+.github/**
+
+# Local agent/graph artifacts
+graphify-out/**
+.agents/**
+
+# Extension-only assets (not needed by the CLI)
+agent-hooks/**
+neovim-plugin/**
+resources/**
+docs/**
+
+# Dev IDE config
+.vscode/**
+.vscode-test/**
+
+# Packaged files
+*.vsix
+
+# Contributor docs
+CONTRIBUTING.md

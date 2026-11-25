@@ -12,7 +12,7 @@
     "runtime protection",
     "file system monitoring"
   ],
-  "version": "3.1.2",
+  "version": "3.2.0",
   "publisher": "stranzh",
   "license": "Apache-2.0",
   "repository": {
@@ -330,6 +330,7 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",
+    "prepublishOnly": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
     "pretest": "npm run compile && npm run lint",
@@ -347,7 +348,7 @@
     "@types/node": "26.x",
     "@types/sinon": "^22.0.2",
     "@types/sinon-chai": "^4.0.0",
-    "@types/vscode": "^1.99.3",
+    "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^8.46.2",
     "@typescript-eslint/parser": "^8.31.1",
     "@vscode/test-cli": "^0.0.11",

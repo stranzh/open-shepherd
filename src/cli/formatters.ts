@@ -11,7 +11,7 @@ import { SeverityLevel } from '../lib/events/sec-events';
 
 export type CliExportFormat = 'jsonl' | 'sarif' | 'ocsf' | 'cef';
 
-const DEFAULT_CLI_VERSION = '3.1.2';
+const DEFAULT_CLI_VERSION = '3.2.0';
 const SARIF_SCHEMA = 'https://raw.githubusercontent.com/oasis-tcs/sarif-spec/master/Schemata/sarif-schema-2.1.0.json';
 
 function sarifLevel(severity: SeverityLevel): 'error' | 'warning' | 'note' {
