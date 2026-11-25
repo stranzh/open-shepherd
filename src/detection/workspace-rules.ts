@@ -177,24 +177,30 @@ export function scanVscodeLaunchJson(content: string, filePath: string): Workspa
   return findings;
 }
 
+const SAFE_BUILTIN_CREDENTIAL_HELPER_RE =
+  /^(?:store|cache(?:\s+--timeout=\d+)?|osxkeychain|manager(?:-core)?|wincred|libsecret)$/i;
+
 export function scanGitConfig(content: string, filePath: string): WorkspaceFinding[] {
   const findings: WorkspaceFinding[] = [];
   const dangerousKeys = [
-    { key: 'fsmonitor', re: /^\s*fsmonitor\s*=\s*(.+)$/im },
-    { key: 'sshCommand', re: /^\s*sshCommand\s*=\s*(.+)$/im },
-    { key: 'hooksPath', re: /^\s*hooksPath\s*=\s*(.+)$/im },
-    { key: 'credential.helper', re: /^\s*helper\s*=\s*(.+)$/im },
+    { key: 'fsmonitor', re: /^\s*fsmonitor\s*=\s*(.+)$/gim },
+    { key: 'sshCommand', re: /^\s*sshCommand\s*=\s*(.+)$/gim },
+    { key: 'hooksPath', re: /^\s*hooksPath\s*=\s*(.+)$/gim },
+    { key: 'credential.helper', re: /^\s*helper\s*=\s*(.+)$/gim },
   ];
   for (const item of dangerousKeys) {
-    const m = content.match(item.re);
-    if (m) {
+    for (const m of content.matchAll(item.re)) {
+      const value = m[1].trim();
+      if (item.key === 'credential.helper' && SAFE_BUILTIN_CREDENTIAL_HELPER_RE.test(value)) {
+        continue;
+      }
       findings.push({
         ruleId: `git_config_${item.key.replace(/\./g, '_')}`,
         ruleName: 'Dangerous Git Config Hook/Command',
         type: WorkspaceRuleType.GIT_CONFIG,
         severity: SeverityLevel.HIGH,
         filePath,
-        finding: `${item.key} = ${m[1].trim()}`,
+        finding: `${item.key} = ${value}`,
         description: `Repository .git/config defines code-executing "${item.key}" setting`,
         confidence: 0.95,
       });

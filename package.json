@@ -30,6 +30,9 @@
     "*"
   ],
   "main": "./out/extension.js",
+  "bin": {
+    "open-shepherd": "./out/cli/index.js"
+  },
   "contributes": {
     "viewsContainers": {
       "activitybar": [

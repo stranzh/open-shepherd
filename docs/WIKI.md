@@ -12,6 +12,7 @@ Welcome to the Open-Shepherd documentation. Use the guides below to install, con
   - [4.2 Neovim (`>= 0.9`)](#42-neovim--09)
   - [4.3 Claude Code & AI CLI Agents](#43-claude-code--ai-cli-agents)
   - [4.4 Antigravity App (GUI), Antigravity CLI (`agy`) & Antigravity IDE](#44-antigravity-app-gui-antigravity-cli-agy--antigravity-ide)
+  - [4.5 Headless CLI, CI/CD & Pre-Clone Scanning](./ci-and-hooks.md)
 - [5. Step-by-Step Operational Guides](#5-step-by-step-operational-guides)
   - [Guide 1: Choosing a Policy Mode (`strict` vs `balanced` vs `audit-only`)](#guide-1-choosing-a-policy-mode-strict-vs-balanced-vs-audit-only)
   - [Guide 2: Scanning Workspaces, MCP Servers & AI Agent Rules](#guide-2-scanning-workspaces-mcp-servers--ai-agent-rules)
