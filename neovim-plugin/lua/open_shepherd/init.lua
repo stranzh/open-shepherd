@@ -12,13 +12,16 @@ local function emit(event_type, severity, details)
     return
   end
 
-  local payload = vim.json.encode({
+  local ok_json, payload = pcall(vim.json.encode, {
     timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ"),
     source = "neovim",
     event_type = event_type,
     severity = severity,
     details = details or {},
   })
+  if not ok_json then
+    return
+  end
 
   local f = io.open(log_path, "a")
   if f then
@@ -55,6 +58,26 @@ function M.setup(opts)
       end
     end,
   })
+
+  local function check_exrc_and_local_rc()
+    if vim.o.exrc then
+      emit("unsafe_option", "high", { option = "exrc" })
+    end
+
+    local cwd = vim.fn.getcwd()
+    for _, rc in ipairs({ ".exrc", ".nvim.lua", ".nvimrc" }) do
+      local candidate = cwd .. "/" .. rc
+      if vim.fn.filereadable(candidate) == 1 then
+        emit("local_rc_detected", "high", { file = candidate })
+      end
+    end
+  end
+
+  vim.api.nvim_create_autocmd({ "VimEnter", "DirChanged" }, {
+    group = group,
+    callback = check_exrc_and_local_rc,
+  })
+  check_exrc_and_local_rc()
 end
 
 return M

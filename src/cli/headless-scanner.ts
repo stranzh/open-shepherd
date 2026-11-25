@@ -16,7 +16,15 @@ import {
   scanOpenCodeConfig,
   scanZedSettings,
 } from '../detection/ai-mcp-extra-rules';
+import { scanJupyterNotebook, scanMsbuildProject, scanXcodePbxproj } from '../detection/build-notebook-rules';
+import {
+  scanEmacsDirLocals,
+  scanLazyLockJson,
+  scanVimConfig,
+  scanZedTasksJson,
+} from '../detection/editor-config-rules';
 import { IDE_AND_AGENT_REGISTRY, detectShadowAiInPaths } from '../detection/ide-registry';
+import { scanHuskyHook, scanPreCommitConfig } from '../detection/repo-hook-rules';
 import {
   WorkspaceFinding,
   WorkspaceRuleType,
@@ -251,6 +259,41 @@ export const CONFIG_SCANNERS: ConfigScannerEntry[] = [
   { relPath: '.windsurfrules', match: (p) => endsWithPath(p, '.windsurfrules'), scan: scanAgentRulesFile },
   { relPath: '.clinerules', match: (p) => endsWithPath(p, '.clinerules'), scan: scanAgentRulesFile },
   { match: (p) => endsWithPath(p, 'antigravity-cli/settings.json'), scan: scanAntigravityCliSettings },
+
+  // Stage 2: Non-Electron IDEs, notebooks, build configs, and repo hooks
+  {
+    relPath: '.vimrc',
+    match: (p) =>
+      endsWithPath(p, '.vimrc') ||
+      endsWithPath(p, '.nvimrc') ||
+      endsWithPath(p, '.nvim.lua') ||
+      endsWithPath(p, '.exrc'),
+    scan: (content, filePath) => scanVimConfig(content, filePath, false),
+  },
+  {
+    match: (p) => endsWithPath(p, '.config/nvim/init.vim') || endsWithPath(p, '.config/nvim/init.lua'),
+    scan: (content, filePath) => scanVimConfig(content, filePath, true),
+  },
+  { relPath: 'lazy-lock.json', match: (p) => endsWithPath(p, 'lazy-lock.json'), scan: scanLazyLockJson },
+  { relPath: '.dir-locals.el', match: (p) => endsWithPath(p, '.dir-locals.el'), scan: scanEmacsDirLocals },
+  { relPath: '.zed/tasks.json', match: (p) => endsWithPath(p, '.zed/tasks.json'), scan: scanZedTasksJson },
+  {
+    relPath: 'Directory.Build.props',
+    match: (p) =>
+      endsWithPath(p, 'directory.build.props') ||
+      endsWithPath(p, 'directory.build.targets') ||
+      p.endsWith('.csproj') ||
+      p.endsWith('.vcxproj'),
+    scan: scanMsbuildProject,
+  },
+  { match: (p) => p.endsWith('.ipynb'), scan: scanJupyterNotebook },
+  { match: (p) => endsWithPath(p, 'project.pbxproj'), scan: scanXcodePbxproj },
+  {
+    relPath: '.pre-commit-config.yaml',
+    match: (p) => endsWithPath(p, '.pre-commit-config.yaml') || endsWithPath(p, '.pre-commit-config.yml'),
+    scan: scanPreCommitConfig,
+  },
+  { match: (p) => hasPathSegment(p, '.husky') && !hasPathSegment(p, '.husky/_'), scan: scanHuskyHook },
 ];
 
 const GLOBAL_MCP_CONFIG_PATHS: string[][] = [
@@ -270,6 +313,8 @@ const GLOBAL_MCP_CONFIG_PATHS: string[][] = [
   ['.gemini', 'config', 'hooks.json'],
   ['.gemini', 'GEMINI.md'],
   ['.gemini', 'antigravity-cli', 'settings.json'],
+  ['.config', 'nvim', 'init.vim'],
+  ['.config', 'nvim', 'init.lua'],
 ];
 
 const GLOBAL_SKILLS_DIRS: string[][] = [
@@ -417,6 +462,65 @@ export class HeadlessWorkspaceScanner {
         // ignore unreadable .git/hooks
       }
     }
+
+    // Bounded recursive walk for nested Stage 2 files (notebooks, MSBuild, Xcode, Vim/Emacs, Husky, pre-commit)
+    const SKIP_WALK_DIRS = new Set(['.git', 'node_modules', 'out', 'dist', 'graphify-out', '.vscode-test']);
+    const visited = new Set<string>(
+      CONFIG_SCANNERS.filter((e) => e.relPath).map((e) => path.resolve(path.join(rootDir, e.relPath!))),
+    );
+    let matchedFiles = 0;
+    const walkNested = (dir: string, depth: number): void => {
+      if (depth > 4 || matchedFiles >= 200) {
+        return;
+      }
+      let entries: fs.Dirent[];
+      try {
+        entries = fs.readdirSync(dir, { withFileTypes: true });
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        if (matchedFiles >= 200) {
+          break;
+        }
+        const full = path.join(dir, entry.name);
+        if (entry.isDirectory()) {
+          if (SKIP_WALK_DIRS.has(entry.name)) {
+            continue;
+          }
+          if (entry.name === '_' && path.basename(dir) === '.husky') {
+            continue;
+          }
+          walkNested(full, depth + 1);
+        } else if (entry.isFile()) {
+          const lower = entry.name.toLowerCase();
+          const inHusky = path.basename(dir) === '.husky';
+          if (
+            inHusky ||
+            lower.endsWith('.ipynb') ||
+            lower.endsWith('.csproj') ||
+            lower.endsWith('.vcxproj') ||
+            lower === 'project.pbxproj' ||
+            lower === 'directory.build.props' ||
+            lower === 'directory.build.targets' ||
+            lower === '.nvimrc' ||
+            lower === '.nvim.lua' ||
+            lower === '.exrc' ||
+            lower === '.pre-commit-config.yml' ||
+            lower === '.dir-locals.el' ||
+            lower === 'lazy-lock.json'
+          ) {
+            const normFull = path.resolve(full);
+            if (!visited.has(normFull)) {
+              visited.add(normFull);
+              matchedFiles++;
+              findings.push(...this.scanSingleFile(full, rootDir));
+            }
+          }
+        }
+      }
+    };
+    walkNested(rootDir, 0);
 
     if (options?.skipRuleIds && options.skipRuleIds.length > 0) {
       const skipSet = new Set(options.skipRuleIds);
