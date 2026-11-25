@@ -12,6 +12,9 @@ Universal IDE & AI-agent security monitoring, adapted from [DataDog/IDE-SHEPHERD
 
 For full setup, event schema, and configuration, see the **[Detailed Wiki](docs/WIKI.md)**.
 
+## Project in pictures
+![Visualisation of tool capabilities](docs/open-shepherd-architecture.png)
+
 ## License & Attribution
 
 Licensed under **Apache License 2.0** — see [LICENSE](LICENSE) and [NOTICE](NOTICE).  
